@@ -14,10 +14,8 @@ from db.queries_catalogos import listar_paises
 
 def _cargar_paises():
     paises = listar_paises()
-    nombres = [p["nombre"] for p in paises]
-    nombre_a_id = {p["nombre"]: p["idpais"] for p in paises}
-    id_a_nombre = {p["idpais"]: p["nombre"] for p in paises}
-    return nombres, nombre_a_id, id_a_nombre
+    opciones = [(p["idpais"], p["nombre"]) for p in paises]
+    return opciones
 
 
 def pagina_clientes():
@@ -42,19 +40,23 @@ def pagina_clientes():
     with tab2:
         st.subheader("➕ Registrar nuevo cliente")
 
-        paises_nombres, paises_nombre_a_id, _ = _cargar_paises()
+        paises_opciones = _cargar_paises()
 
-        if not paises_nombres:
+        if not paises_opciones:
             st.warning("No hay países registrados. Añade países en la sección de Catálogos primero.")
         else:
             with st.form("form_nuevo_cliente"):
-                no_identificacion = st.text_input("Número de identificación:")
+                noIdentificacion = st.text_input("Número de identificación:")
                 nombre = st.text_input("Nombre:")
                 apellidos = st.text_input("Apellidos:")
                 edad = st.number_input("Edad:", min_value=0, max_value=120)
                 sexo = st.selectbox("Sexo:", ["M", "F"])
-                pais_nombre = st.selectbox("País:", paises_nombres)
-                direccion = st.text_input("Dirección postal:")
+                pais_seleccionado = st.selectbox(
+                    "País:",
+                    options=paises_opciones,
+                    format_func=lambda x: x[1]
+                )
+                dirPostal = st.text_input("Dirección postal:")
                 telefono = st.text_input("Teléfono:")
                 correo = st.text_input("Correo electrónico:")
                 guardar = st.form_submit_button("Guardar", use_container_width=True)
@@ -62,18 +64,19 @@ def pagina_clientes():
             if guardar:
                 try:
                     cliente = Cliente(
-                        no_identificacion=no_identificacion,
+                        noIdentificacion=noIdentificacion,
                         nombre=nombre,
                         apellidos=apellidos,
                         edad=edad,
                         sexo=sexo,
                         telefono=telefono,
                         correo=correo,
-                        idpais=paises_nombre_a_id[pais_nombre],
-                        dir_postal=direccion
+                        idpais=pais_seleccionado[0],
+                        dirPostal=dirPostal
                     )
                     insertar_cliente(cliente)
                     st.success(f"Cliente {cliente.nombre} registrado correctamente.")
+                    st.rerun()
                 except ValueError as e:
                     st.error(f"Error de validación: {e}")
                 except Exception as e:
@@ -82,7 +85,7 @@ def pagina_clientes():
     with tab3:
         st.subheader("✏️ Editar o eliminar cliente")
 
-        paises_nombres, paises_nombre_a_id, paises_id_a_nombre = _cargar_paises()
+        paises_opciones = _cargar_paises()
 
         id_buscar = st.number_input("ID del cliente a buscar:", min_value=1, step=1, key="input_id_cliente")
 
@@ -100,17 +103,26 @@ def pagina_clientes():
         if cliente and not st.session_state.cliente_eliminado:
             st.success(f"Cliente encontrado: {cliente['nombre']} {cliente['apellidos']}")
 
-            pais_actual_nombre = paises_id_a_nombre.get(cliente["idpais"], paises_nombres[0] if paises_nombres else "")
-            pais_index = paises_nombres.index(pais_actual_nombre) if pais_actual_nombre in paises_nombres else 0
+            pais_actual_id = cliente["idpais"]
+            pais_actual_index = 0
+            for i, (pid, _) in enumerate(paises_opciones):
+                if pid == pais_actual_id:
+                    pais_actual_index = i
+                    break
 
             with st.form("form_editar_cliente"):
-                no_identificacion = st.text_input("Número de identificación:", value=cliente["no_identificacion"])
+                noIdentificacion = st.text_input("Número de identificación:", value=cliente["noIdentificación"])
                 nombre = st.text_input("Nombre:", value=cliente["nombre"])
                 apellidos = st.text_input("Apellidos:", value=cliente["apellidos"])
                 edad = st.number_input("Edad:", min_value=0, max_value=120, value=int(cliente["edad"]))
                 sexo = st.selectbox("Sexo:", ["M", "F"], index=["M", "F"].index(cliente["sexo"]))
-                pais_nombre = st.selectbox("País:", paises_nombres, index=pais_index)
-                direccion = st.text_input("Dirección postal:", value=cliente["dir_postal"] or "")
+                pais_seleccionado = st.selectbox(
+                    "País:",
+                    options=paises_opciones,
+                    format_func=lambda x: x[1],
+                    index=pais_actual_index
+                )
+                dirPostal = st.text_input("Dirección postal:", value=cliente["dirPostal"] or "")
                 telefono = st.text_input("Teléfono:", value=cliente["telefono"] or "")
                 correo = st.text_input("Correo electrónico:", value=cliente["correo"] or "")
 
@@ -121,15 +133,15 @@ def pagina_clientes():
             if actualizar:
                 try:
                     cliente_editado = Cliente(
-                        no_identificacion=no_identificacion,
+                        noIdentificacion=noIdentificacion,
                         nombre=nombre,
                         apellidos=apellidos,
                         edad=edad,
                         sexo=sexo,
                         telefono=telefono,
                         correo=correo,
-                        idpais=paises_nombre_a_id[pais_nombre],
-                        dir_postal=direccion,
+                        idpais=pais_seleccionado[0],
+                        dirPostal=dirPostal,
                         idcliente=cliente["idcliente"]
                     )
                     actualizar_cliente(cliente_editado)

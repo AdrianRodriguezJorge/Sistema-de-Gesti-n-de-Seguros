@@ -3,9 +3,13 @@ from db.conexionDB import Database
 
 def insertar_cobertura(cobertura):
     """Insertar una nueva cobertura en el catálogo"""
-    sql = "INSERT INTO cobertura (descripcion) VALUES (%s) RETURNING idcobertura;"
     with Database() as db:
-        result = db.fetch_one(sql, (cobertura.descripcion,))
+        # Obtener el próximo ID disponible
+        last_id = db.fetch_one("SELECT COALESCE(MAX(idcobertura), 0) + 1 as next_id FROM cobertura;")
+        id_generado = last_id["next_id"] if last_id else 1
+        
+        sql = "INSERT INTO cobertura (idcobertura, descripcion) VALUES (%s, %s) RETURNING idcobertura;"
+        result = db.fetch_one(sql, (id_generado, cobertura.descripcion))
         return result["idcobertura"] if result else None
 
 

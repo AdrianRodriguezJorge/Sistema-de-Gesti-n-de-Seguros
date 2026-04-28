@@ -1,9 +1,9 @@
 import re
 
 class Cliente:
-    def __init__(self, nombre, apellidos, no_identificacion, edad, sexo, telefono, correo, idpais, dir_postal=None, idcliente=None):
+    def __init__(self, nombre, apellidos, noIdentificación, edad, sexo, telefono, correo, idpais, dirPostal=None, idcliente=None):
         self.idcliente = self._validar_idcliente(idcliente)
-        self.no_identificacion = self._validar_no_identificacion(no_identificacion)
+        self.noIdentificación = self._validar_noIdentificación(noIdentificación)
         self.nombre = self._validar_nombre(nombre)
         self.apellidos = self._validar_apellidos(apellidos)
         self.edad = self._validar_edad(edad)
@@ -11,7 +11,7 @@ class Cliente:
         self.telefono = self._validar_telefono(telefono)
         self.correo = self._validar_correo(correo)
         self.idpais = self._validar_idpais(idpais)
-        self.dir_postal = self._validar_dir_postal(dir_postal)
+        self.dirPostal = self._validar_dirPostal(dirPostal)
 
     def _validar_idcliente(self, valor):
         if valor is None:
@@ -24,7 +24,7 @@ class Cliente:
             raise ValueError("idCliente debe ser positivo")
         return valor
 
-    def _validar_no_identificacion(self, valor):
+    def _validar_noIdentificación(self, valor):
         if not valor or not str(valor).strip():
             raise ValueError("El número de identificación es obligatorio")
         valor = str(valor).strip()
@@ -82,15 +82,14 @@ class Cliente:
         return valor
 
     def _validar_idpais(self, valor):
-        try:
-            valor = int(valor)
-        except:
-            raise ValueError("idPais debe ser un entero")
-        if valor <= 0:
-            raise ValueError("idPais debe ser positivo")
+        if not valor or not str(valor).strip():
+            raise ValueError("El país es obligatorio")
+        valor = str(valor).strip().upper()
+        if len(valor) != 3:
+            raise ValueError("El código de país debe tener exactamente 3 caracteres (ej: CUB, USA, MEX)")
         return valor
 
-    def _validar_dir_postal(self, valor):
+    def _validar_dirPostal(self, valor):
         if valor is None or not str(valor).strip():
             return None
         valor = str(valor).strip()
