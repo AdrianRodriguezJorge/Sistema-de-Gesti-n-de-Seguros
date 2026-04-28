@@ -1,25 +1,33 @@
 from db.conexionDB import Database
 
+
 def insertar_pais(pais):
-    sql = "INSERT INTO pais (nombre) VALUES (%s) RETURNING idpais;"
+    # Generar ID automáticamente (primeras 3 letras del nombre en mayúsculas)
+    id_generado = pais.nombre[:3].upper()
+    
+    sql = "INSERT INTO pais (idpais, nombre) VALUES (%s, %s) RETURNING idpais;"
     with Database() as db:
-        result = db.fetch_one(sql, (pais.nombre,))
+        result = db.fetch_one(sql, (id_generado, pais.nombre))
         return result["idpais"] if result else None
+
 
 def listar_paises():
     sql = "SELECT idpais, nombre FROM pais ORDER BY nombre;"
     with Database() as db:
         return db.fetch_all(sql)
 
+
 def obtener_pais_por_id(idpais):
     sql = "SELECT idpais, nombre FROM pais WHERE idpais = %s;"
     with Database() as db:
         return db.fetch_one(sql, (idpais,))
 
+
 def actualizar_pais(pais):
     sql = "UPDATE pais SET nombre = %s WHERE idpais = %s;"
     with Database() as db:
         db.execute(sql, (pais.nombre, pais.id_))
+
 
 def eliminar_pais(idpais):
     sql = "DELETE FROM pais WHERE idpais = %s;"
