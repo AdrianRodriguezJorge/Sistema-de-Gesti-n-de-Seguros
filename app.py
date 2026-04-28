@@ -15,7 +15,7 @@ with st.sidebar:
    
 if menu == "🏠 Principal":
    pagina_principal()
-
+    
 elif menu == "👤 Clientes":
     pagina_clientes()
 
