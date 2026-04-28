@@ -1,3 +1,5 @@
+# ui/ui_catalogos.py
+
 import streamlit as st
 import pandas as pd
 
@@ -5,6 +7,8 @@ from data.class_catalogos import (
     Pais, TipoSeguro, EstadoPoliza,
     TipoSiniestro, EstadoReclamacion, TipoReaseguro
 )
+from data.class_cobertura import Cobertura 
+
 from db.queries_catalogos import (
     insertar_pais, listar_paises, obtener_pais_por_id, actualizar_pais, eliminar_pais,
     insertar_tipo_seguro, listar_tipos_seguro, obtener_tipo_seguro_por_id, actualizar_tipo_seguro, eliminar_tipo_seguro,
@@ -13,20 +17,24 @@ from db.queries_catalogos import (
     insertar_estado_reclamacion, listar_estados_reclamacion, obtener_estado_reclamacion_por_id, actualizar_estado_reclamacion, eliminar_estado_reclamacion,
     insertar_tipo_reaseguro, listar_tipos_reaseguro, obtener_tipo_reaseguro_por_id, actualizar_tipo_reaseguro, eliminar_tipo_reaseguro,
 )
+from db.queries_cobertura import ( 
+    insertar_cobertura, listar_coberturas, obtener_cobertura_por_id,
+    actualizar_cobertura, eliminar_cobertura
+)
 
 
 def _seccion_catalogo(label, clase, fn_listar, fn_insertar, fn_obtener, fn_actualizar, fn_eliminar, col_id):
     """Renderiza listado, nuevo registro y editar/eliminar para un catálogo usando session_state."""
 
     key_encontrado = f"cat_{col_id}_encontrado"
-    key_eliminado  = f"cat_{col_id}_eliminado"
+    key_eliminado = f"cat_{col_id}_eliminado"
 
     if key_encontrado not in st.session_state:
         st.session_state[key_encontrado] = None
     if key_eliminado not in st.session_state:
         st.session_state[key_eliminado] = False
 
-    # ── Listado ──────────────────────────────────────────────
+    # Listado
     st.subheader(f"📋 Listado de {label}")
     registros = fn_listar()
     if registros:
@@ -36,17 +44,20 @@ def _seccion_catalogo(label, clase, fn_listar, fn_insertar, fn_obtener, fn_actua
 
     st.divider()
 
-    # ── Nuevo registro ────────────────────────────────────────
+    # Nuevo registro
     st.subheader(f"➕ Nuevo {label}")
     with st.form(f"form_nuevo_{col_id}"):
-        nombre_nuevo = st.text_input("Nombre:")
+        nombre_nuevo = st.text_input("Nombre:" if label != "Cobertura" else "Descripción:")
         guardar = st.form_submit_button("Guardar", use_container_width=True)
 
     if guardar:
         try:
-            obj = clase(nombre=nombre_nuevo)
+            if label == "Cobertura":
+                obj = clase(descripcion=nombre_nuevo)  # Cobertura usa descripcion, no nombre
+            else:
+                obj = clase(nombre=nombre_nuevo)
             fn_insertar(obj)
-            st.success(f"{label} '{obj.nombre}' registrado correctamente.")
+            st.success(f"{label} registrado correctamente.")
             st.rerun()
         except ValueError as e:
             st.error(f"Error de validación: {e}")
@@ -55,7 +66,7 @@ def _seccion_catalogo(label, clase, fn_listar, fn_insertar, fn_obtener, fn_actua
 
     st.divider()
 
-    # ── Editar / Eliminar ─────────────────────────────────────
+    # Editar / Eliminar 
     st.subheader(f"✏️ Editar o eliminar {label}")
 
     id_buscar = st.number_input(f"ID a buscar:", min_value=1, step=1, key=f"buscar_{col_id}")
@@ -72,17 +83,28 @@ def _seccion_catalogo(label, clase, fn_listar, fn_insertar, fn_obtener, fn_actua
     registro = st.session_state[key_encontrado]
 
     if registro and not st.session_state[key_eliminado]:
-        st.success(f"Registro encontrado: {registro['nombre']}")
+        # Mostrar el nombre o descripción según el tipo
+        if label == "Cobertura":
+            valor_actual = registro.get("descripcion", "")
+            st.success(f"Registro encontrado: {valor_actual}")
+        else:
+            st.success(f"Registro encontrado: {registro['nombre']}")
 
         with st.form(f"form_editar_{col_id}"):
-            nombre_edit = st.text_input("Nombre:", value=registro["nombre"])
+            if label == "Cobertura":
+                nombre_edit = st.text_input("Descripción:", value=registro.get("descripcion", ""))
+            else:
+                nombre_edit = st.text_input("Nombre:", value=registro.get("nombre", ""))
             col1, col2 = st.columns(2)
             actualizar = col1.form_submit_button("Actualizar", use_container_width=True)
-            eliminar   = col2.form_submit_button("🗑️ Eliminar", use_container_width=True)
+            eliminar = col2.form_submit_button("🗑️ Eliminar", use_container_width=True)
 
         if actualizar:
             try:
-                obj = clase(nombre=nombre_edit, id_=registro[col_id])
+                if label == "Cobertura":
+                    obj = clase(descripcion=nombre_edit, id_cobertura=registro[col_id])
+                else:
+                    obj = clase(nombre=nombre_edit, id_=registro[col_id])
                 fn_actualizar(obj)
                 st.session_state[key_encontrado] = dict(fn_obtener(registro[col_id]))
                 st.success("Registro actualizado correctamente.")
@@ -109,13 +131,15 @@ def pagina_catalogos():
     st.title("📚 Gestión de Catálogos")
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    # Añadir pestaña para Coberturas
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "🌍 Países",
         "🛡️ Tipos de Seguro",
         "📄 Estados de Póliza",
         "⚠️ Tipos de Siniestro",
         "📋 Estados de Reclamación",
         "🔁 Tipos de Reaseguro",
+        "📦 Coberturas",
     ])
 
     with tab1:
@@ -164,4 +188,12 @@ def pagina_catalogos():
             fn_listar=listar_tipos_reaseguro, fn_insertar=insertar_tipo_reaseguro,
             fn_obtener=obtener_tipo_reaseguro_por_id, fn_actualizar=actualizar_tipo_reaseguro,
             fn_eliminar=eliminar_tipo_reaseguro, col_id="idtiporeaseguro",
+        )
+
+    with tab7:
+        _seccion_catalogo(
+            label="Cobertura", clase=Cobertura,
+            fn_listar=listar_coberturas, fn_insertar=insertar_cobertura,
+            fn_obtener=obtener_cobertura_por_id, fn_actualizar=actualizar_cobertura,
+            fn_eliminar=eliminar_cobertura, col_id="idcobertura",
         )

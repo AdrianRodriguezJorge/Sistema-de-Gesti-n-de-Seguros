@@ -11,13 +11,13 @@ def insertar_cliente(cliente):
             raise ValueError(f"El país con ID {cliente.idpais} no existe. Verifica la tabla PAIS.")
 
         sql = """
-            INSERT INTO cliente (no_identificacion, nombre, apellidos, edad, sexo, telefono, correo, idpais, dir_postal)
+            INSERT INTO cliente (noIdentificación, nombre, apellidos, edad, sexo, telefono, correo, idpais, dirPostal)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING idcliente;
         """
 
         params = (
-            cliente.no_identificacion,
+            cliente.noIdentificación,
             cliente.nombre,
             cliente.apellidos,
             cliente.edad,
@@ -25,7 +25,7 @@ def insertar_cliente(cliente):
             cliente.telefono,
             cliente.correo,
             cliente.idpais,
-            cliente.dir_postal
+            cliente.dirPostal
         )
 
         result = db.fetch_one(sql, params)
@@ -48,7 +48,7 @@ def actualizar_cliente(cliente):
 
         sql = """
             UPDATE cliente
-            SET no_identificacion = %s,
+            SET noIdentificación = %s,
                 nombre = %s,
                 apellidos = %s,
                 edad = %s,
@@ -56,12 +56,12 @@ def actualizar_cliente(cliente):
                 telefono = %s,
                 correo = %s,
                 idpais = %s,
-                dir_postal = %s
+                dirPostal = %s
             WHERE idcliente = %s;
         """
 
         params = (
-            cliente.no_identificacion,
+            cliente.noIdentificación,
             cliente.nombre,
             cliente.apellidos,
             cliente.edad,
@@ -69,7 +69,7 @@ def actualizar_cliente(cliente):
             cliente.telefono,
             cliente.correo,
             cliente.idpais,
-            cliente.dir_postal,
+            cliente.dirPostal,
             cliente.idcliente
         )
 
@@ -78,7 +78,7 @@ def actualizar_cliente(cliente):
 
 def listar_clientes():
     sql = """
-        SELECT idcliente, no_identificacion, nombre, apellidos, edad, sexo, idpais, dir_postal, telefono, correo
+        SELECT idcliente, noIdentificación, nombre, apellidos, edad, sexo, idpais, dirPostal, telefono, correo
         FROM cliente
         ORDER BY idcliente;
     """
@@ -88,7 +88,7 @@ def listar_clientes():
 
 def obtener_cliente_por_id(idcliente):
     sql = """
-        SELECT idcliente, no_identificacion, nombre, apellidos, edad, sexo, idpais, dir_postal, telefono, correo
+        SELECT idcliente, noIdentificación, nombre, apellidos, edad, sexo, idpais, dirPostal, telefono, correo
         FROM cliente
         WHERE idcliente = %s;
     """

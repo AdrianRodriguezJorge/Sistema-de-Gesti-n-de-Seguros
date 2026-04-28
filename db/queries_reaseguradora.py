@@ -3,8 +3,8 @@ from db.conexionDB import Database
 
 def insertar_reaseguradora(reaseguradora):
     sql = """
-        INSERT INTO reaseguradora (idreaseguradora, nombre, email, idpais, idtiporeaseguro)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO reaseguradora (idreaseguradora, nombre, idpais, idtiporeaseguro)
+        VALUES (%s, %s, %s, %s)
         RETURNING idreaseguradora;
     """
     with Database() as db:
@@ -24,7 +24,6 @@ def insertar_reaseguradora(reaseguradora):
         params = (
             reaseguradora.id_reaseguradora,
             reaseguradora.nombre,
-            reaseguradora.email,
             reaseguradora.id_pais,
             reaseguradora.id_tipo_reaseguro
         )
@@ -34,7 +33,7 @@ def insertar_reaseguradora(reaseguradora):
 
 def listar_reaseguradoras():
     sql = """
-        SELECT r.idreaseguradora, r.nombre, r.email, p.nombre as pais, tr.nombre as tipo_reaseguro
+        SELECT r.idreaseguradora, r.nombre, p.nombre as pais, tr.nombre as tipo_reaseguro
         FROM reaseguradora r
         JOIN pais p ON r.idpais = p.idpais
         JOIN tipo_reaseguro tr ON r.idtiporeaseguro = tr.idtiporeaseguro
@@ -46,7 +45,7 @@ def listar_reaseguradoras():
 
 def obtener_reaseguradora_por_id(idreaseguradora):
     sql = """
-        SELECT r.*, p.nombre as pais_nombre, tr.nombre as tipo_reaseguro_nombre
+        SELECT r.idreaseguradora, r.nombre, r.idpais, r.idtiporeaseguro, p.nombre as pais_nombre, tr.nombre as tipo_reaseguro_nombre
         FROM reaseguradora r
         JOIN pais p ON r.idpais = p.idpais
         JOIN tipo_reaseguro tr ON r.idtiporeaseguro = tr.idtiporeaseguro
@@ -59,13 +58,12 @@ def obtener_reaseguradora_por_id(idreaseguradora):
 def actualizar_reaseguradora(reaseguradora):
     sql = """
         UPDATE reaseguradora
-        SET nombre = %s, email = %s, idpais = %s, idtiporeaseguro = %s
+        SET nombre = %s, idpais = %s, idtiporeaseguro = %s
         WHERE idreaseguradora = %s;
     """
     with Database() as db:
         db.execute(sql, (
             reaseguradora.nombre,
-            reaseguradora.email,
             reaseguradora.id_pais,
             reaseguradora.id_tipo_reaseguro,
             reaseguradora.id_reaseguradora

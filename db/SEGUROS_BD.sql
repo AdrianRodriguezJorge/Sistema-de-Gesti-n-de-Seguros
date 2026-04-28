@@ -55,7 +55,7 @@ CREATE TABLE AGENCIA (
 -- TABLA CLIENTE
 CREATE TABLE CLIENTE (
     idCliente VARCHAR(15) PRIMARY KEY,
-    noIdentificación VARCHAR(15) NOT NULL,
+    noIdentificacion VARCHAR(15) NOT NULL,
     nombre VARCHAR(50) NOT NULL,
     apellidos VARCHAR(100) NOT NULL,
     edad INTEGER CHECK (edad >= 0 AND edad <= 120),

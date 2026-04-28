@@ -6,9 +6,10 @@ class Database:
         self.conn = psycopg2.connect(
             dbname="seguros_db",
             user="postgres",
-            password="123",
+            password="vrdThqZH",
             host="localhost",
-            port="5432"
+            port="5432",
+            client_encoding='UTF8'
         )
 
     def __enter__(self):
@@ -20,7 +21,7 @@ class Database:
     def fetch_one(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
-        self.conn.commit()  # ← añadir
+        self.conn.commit()
         row = cur.fetchone()
         cur.close()
         return row
@@ -28,7 +29,7 @@ class Database:
     def fetch_all(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
-        self.conn.commit()  # ← añadir (por si fetch_all se usa con INSERT ... RETURNING alguna vez)
+        self.conn.commit()
         rows = cur.fetchall()
         cur.close()
         return rows
