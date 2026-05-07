@@ -1,46 +1,31 @@
-class CatalogoBase:
-    """Clase base para catálogos simples (id + nombre)."""
+from data.class_entidadConNombre import EntidadConNombre
 
-    _max_nombre = 100  # sobreescribir en subclases si el VARCHAR es distinto
+class Pais(EntidadConNombre):
+    _maxNombre = 100
+    def __init__(self, nombre, idPais=None):
+        super().__init__(id=idPais, nombre=nombre)
 
-    def __init__(self, nombre, id_=None):
-        self.id_ = self._validar_id(id_)
-        self.nombre = self._validar_nombre(nombre)
+class TipoSeguro(EntidadConNombre):
+    _maxNombre = 50
+    def __init__(self, nombre, idTipoSeguro=None):
+        super().__init__(id=idTipoSeguro, nombre=nombre)
 
-    def _validar_id(self, valor):
-        if valor is None:
-            return None
-        try:
-            valor = int(valor)
-        except:
-            raise ValueError("El ID debe ser un entero")
-        if valor <= 0:
-            raise ValueError("El ID debe ser positivo")
-        return valor
+class EstadoPoliza(EntidadConNombre):
+    _maxNombre = 30
+    def __init__(self, nombre, idEstadoPoliza=None):
+        super().__init__(id=idEstadoPoliza, nombre=nombre)
 
-    def _validar_nombre(self, valor):
-        if not valor or not str(valor).strip():
-            raise ValueError("El nombre no puede estar vacío")
-        valor = str(valor).strip()
-        if len(valor) > self._max_nombre:
-            raise ValueError(f"El nombre no puede tener más de {self._max_nombre} caracteres")
-        return valor
+class TipoSiniestro(EntidadConNombre):
+    _maxNombre = 50
+    def __init__(self, nombre, idTipoSiniestro=None):
+        super().__init__(id=idTipoSiniestro, nombre=nombre)
 
+class EstadoReclamacion(EntidadConNombre):
+    _maxNombre = 30
+    def __init__(self, nombre, idEstadoReclamacion=None):
+        super().__init__(id=idEstadoReclamacion, nombre=nombre)
 
-class Pais(CatalogoBase):
-    _max_nombre = 100
-
-class TipoSeguro(CatalogoBase):
-    _max_nombre = 50
-
-class EstadoPoliza(CatalogoBase):
-    _max_nombre = 30
-
-class TipoSiniestro(CatalogoBase):
-    _max_nombre = 50
-
-class EstadoReclamacion(CatalogoBase):
-    _max_nombre = 30
-
-class TipoReaseguro(CatalogoBase):
-    _max_nombre = 50
+class TipoReaseguro(EntidadConNombre):
+    _maxNombre = 50
+    def __init__(self, nombre, idTipoReaseguro=None):
+        super().__init__(id=idTipoReaseguro, nombre=nombre)

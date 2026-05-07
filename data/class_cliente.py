@@ -1,5 +1,7 @@
 import re
+from data.class_entidadConNombre import EntidadConNombre
 
+<<<<<<< HEAD
 class Cliente:
     def __init__(self, nombre, apellidos, noIdentificación, edad, sexo, telefono, correo, idpais, dirPostal=None, idcliente=None):
         self.idcliente = self._validar_idcliente(idcliente)
@@ -12,18 +14,27 @@ class Cliente:
         self.correo = self._validar_correo(correo)
         self.idpais = self._validar_idpais(idpais)
         self.dirPostal = self._validar_dirPostal(dirPostal)
+=======
+class Cliente(EntidadConNombre):
+    _maxNombre = 50 
+    def __init__(self, nombre, apellidos, noIdentificacion, edad, sexo, idPais, dirPostal=None, telefono=None, correo=None, idCliente=None):
+        super().__init__(id=idCliente, nombre=nombre)
+        self.apellidos = self._validarTexto(apellidos, 100)
+        self.noIdentificacion = self._validarTexto(noIdentificacion, 50)
+        self.edad = self._validarEdad(edad)
+        self.sexo = self._validarSexo(sexo)
+        self.idPais = self._validarId(idPais)
+        self.dirPostal = str(dirPostal)[:150] if dirPostal else None
+        self.telefono = str(telefono)[:20] if telefono else None
+        self.correo = self._validarEmail(correo) if correo else None
+>>>>>>> 73161b5 (mis cambios)
 
-    def _validar_idcliente(self, valor):
-        if valor is None:
-            return None
-        try:
-            valor = int(valor)
-        except:
-            raise ValueError("idCliente debe ser un entero")
-        if valor <= 0:
-            raise ValueError("idCliente debe ser positivo")
-        return valor
+    def _validarTexto(self, v, m):
+        if not v: 
+            raise ValueError("Campo obligatorio faltante")
+        return str(v).strip()[:m]
 
+<<<<<<< HEAD
     def _validar_noIdentificación(self, valor):
         if not valor or not str(valor).strip():
             raise ValueError("El número de identificación es obligatorio")
@@ -31,14 +42,20 @@ class Cliente:
         if len(valor) > 50:
             raise ValueError("El número de identificación no puede tener más de 50 caracteres")
         return valor
+=======
+    def _validarEdad(self, e):
+        if not (0 <= int(e) <= 120): 
+            raise ValueError("Edad fuera de rango (0-120)")
+        return int(e)
+>>>>>>> 73161b5 (mis cambios)
 
-    def _validar_nombre(self, valor):
-        if not valor or not valor.strip():
-            raise ValueError("El nombre no puede estar vacío")
-        if len(valor) > 50:
-            raise ValueError("El nombre no puede tener más de 50 caracteres")
-        return valor.strip()
+    def _validarSexo(self, s):
+        s = str(s).upper()
+        if s not in ('M', 'F'): 
+            raise ValueError("Sexo debe ser M o F")
+        return s
 
+<<<<<<< HEAD
     def _validar_apellidos(self, valor):
         if not valor or not valor.strip():
             raise ValueError("Los apellidos no pueden estar vacíos")
@@ -96,3 +113,9 @@ class Cliente:
         if len(valor) > 150:
             raise ValueError("La dirección postal no puede tener más de 150 caracteres")
         return valor
+=======
+    def _validarEmail(self, e):
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", e): 
+            raise ValueError("Email inválido")
+        return e
+>>>>>>> 73161b5 (mis cambios)

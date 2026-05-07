@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 class Reaseguradora:
     def __init__(self, nombre, id_pais, id_tipo_reaseguro, email=None, id_reaseguradora=None):
         self.id_reaseguradora = self._validar_id_reaseguradora(id_reaseguradora)
@@ -80,3 +81,13 @@ class ParticipacionReaseguro:
         if valor < 0 or valor > 100:
             raise ValueError("El porcentaje debe estar entre 0 y 100")
         return valor
+=======
+from data.class_entidadConNombre import EntidadConNombre
+
+class Reaseguradora(EntidadConNombre):
+    _maxNombre = 100
+    def __init__(self, nombre, idPais, idTipoReaseguro, idReaseguradora=None):
+        super().__init__(id=idReaseguradora, nombre=nombre)
+        self.idPais = self._validarId(idPais)
+        self.idTipoReaseguro = self._validarId(idTipoReaseguro)
+>>>>>>> 73161b5 (mis cambios)

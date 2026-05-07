@@ -21,15 +21,22 @@ class Database:
     def fetch_one(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
+<<<<<<< HEAD
         self.conn.commit()
+=======
+>>>>>>> 73161b5 (mis cambios)
         row = cur.fetchone()
+        self.conn.commit()
         cur.close()
         return row
 
     def fetch_all(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
+<<<<<<< HEAD
         self.conn.commit()
+=======
+>>>>>>> 73161b5 (mis cambios)
         rows = cur.fetchall()
         cur.close()
         return rows
