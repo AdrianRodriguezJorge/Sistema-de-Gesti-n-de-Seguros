@@ -1,5 +1,5 @@
 import streamlit as st
-from data.class_agencia import Agencia
+from models.agencia import Agencia
 from db.queries_agencia import CrudAgencia
 
 def pagina_agencia():
@@ -34,22 +34,21 @@ def pagina_agencia():
             except Exception as e:
                 st.error(f'Error inesperado: {e}')
     else:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.text(f'Nombre: {agencia_registrada.nombre}')
-            st.text(f'Dirección: {agencia_registrada.direccion}')
-            st.text(f'Teléfono: {agencia_registrada.telefono}')
-            st.text(f'Email: {agencia_registrada.email}')
-        with col2:
-            st.text(f'Director General: {agencia_registrada.directorGeneral}')
-            st.text(f'Jefe de Seguros: {agencia_registrada.jefeSeguros}')
-            st.text(f'Jefe de Reclamaciones: {agencia_registrada.jefeReclamaciones}')
-        st.divider()
-        if 'editando_agencia' not in st.session_state:
-            st.session_state.editando_agencia = False
-        if not st.session_state.editando_agencia:
+        if not st.session_state.get('editando_agencia'):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.text(f'Nombre: {agencia_registrada.nombre}')
+                st.text(f'Dirección: {agencia_registrada.direccion}')
+                st.text(f'Teléfono: {agencia_registrada.telefono}')
+                st.text(f'Email: {agencia_registrada.email}')
+            with col2:
+                st.text(f'Director General: {agencia_registrada.directorGeneral}')
+                st.text(f'Jefe de Seguros: {agencia_registrada.jefeSeguros}')
+                st.text(f'Jefe de Reclamaciones: {agencia_registrada.jefeReclamaciones}')
+            st.divider()
             if st.button('Editar Datos', use_container_width=True):
                 st.session_state.editando_agencia = True
+                st.session_state.editing_active = True
                 st.rerun()
         else:
             st.subheader('Editar Datos de la Agencia')
@@ -61,13 +60,20 @@ def pagina_agencia():
                 directorGeneral = st.text_input('Director General:', value=agencia_registrada.directorGeneral)
                 jefeSeguros = st.text_input('Jefe de Seguros:', value=agencia_registrada.jefeSeguros)
                 jefeReclamaciones = st.text_input('Jefe de Reclamaciones:', value=agencia_registrada.jefeReclamaciones)
-                actualizar = st.form_submit_button('Guardar', use_container_width=True)
+                col_b1, col_b2 = st.columns(2)
+                actualizar = col_b1.form_submit_button('Guardar', use_container_width=True)
+                cancelar = col_b2.form_submit_button('Cancelar', use_container_width=True)
             if actualizar:
                 try:
                     agencia_actualizada = Agencia(nombre=nombre, direccion=direccion, telefono=telefono, email=email, directorGeneral=directorGeneral, jefeSeguros=jefeSeguros, jefeReclamaciones=jefeReclamaciones, idAgencia=agencia_registrada.id)
                     crud.actualizar(agencia_actualizada)
                     st.success('Datos actualizados correctamente.')
                     st.session_state.editando_agencia = False
+                    st.session_state.editing_active = False
                     st.rerun()
                 except Exception as e:
                     st.error(f'Error al actualizar: {e}')
+            if cancelar:
+                st.session_state.editando_agencia = False
+                st.session_state.editing_active = False
+                st.rerun()

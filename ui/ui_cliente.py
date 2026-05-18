@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from data.class_cliente import Cliente
+from models.cliente import Cliente
 from db.conexionDB import Database
 from db.queries_cliente import CrudCliente
 from db.queries_catalogos import CrudPais, CrudEstadoPoliza, CrudEstadoReclamacion
@@ -19,7 +19,80 @@ def pagina_clientes():
     st.divider()
     cat = _cargar_catalogos_cliente()
     crud_cliente = CrudCliente()
-    tab1, tab2, tab3 = st.tabs(['Listado', 'Nuevo Cliente', 'Editar / Eliminar'])
+    # Check if there is an active editing session for a client
+    edit_id = st.session_state.get('editing_cliente_id')
+    
+    if edit_id:
+        cliente_seleccionado = crud_cliente.obtener(edit_id)
+        if not cliente_seleccionado:
+            st.error("El cliente seleccionado no existe.")
+            st.session_state.pop('editing_cliente_id', None)
+            st.session_state.editing_active = False
+            st.rerun()
+            
+        st.subheader(f'Editar Cliente: {cliente_seleccionado.nombre} {cliente_seleccionado.apellidos}')
+        
+        # Check if we are confirming deletion
+        confirm_del = st.session_state.get('confirming_delete_cliente', False)
+        
+        if confirm_del:
+            st.warning(f" Está seguro de que desea eliminar permanentemente al cliente **{cliente_seleccionado.nombre} {cliente_seleccionado.apellidos}**?")
+            st.write("Esta acción es irreversible y eliminará todos los registros asociados a este cliente.")
+            col_conf1, col_conf2 = st.columns(2)
+            if col_conf1.button("Sí, eliminar permanentemente", use_container_width=True, type="primary"):
+                try:
+                    crud_cliente.eliminar(cliente_seleccionado.id)
+                    st.success("Cliente y registros asociados eliminados.")
+                    st.session_state.pop('editing_cliente_id', None)
+                    st.session_state.pop('confirming_delete_cliente', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar: {e}")
+            if col_conf2.button("No, mantener registro", use_container_width=True):
+                st.session_state.pop('confirming_delete_cliente', None)
+                st.rerun()
+        else:
+            with st.form('form_edit_cliente_focused'):
+                n_nom = st.text_input('Nombre', value=cliente_seleccionado.nombre)
+                n_ape = st.text_input('Apellidos', value=cliente_seleccionado.apellidos)
+                n_eda = st.number_input('Edad', value=int(cliente_seleccionado.edad), min_value=0, max_value=120)
+                n_tel = st.text_input('Teléfono', value=cliente_seleccionado.telefono if cliente_seleccionado.telefono else '')
+                n_ema = st.text_input('Correo', value=cliente_seleccionado.correo if cliente_seleccionado.correo else '')
+                
+                col_b1, col_b2, col_b3 = st.columns(3)
+                btn_upd = col_b1.form_submit_button('Actualizar Datos', use_container_width=True)
+                btn_del = col_b2.form_submit_button('Eliminar Cliente', use_container_width=True)
+                btn_can = col_b3.form_submit_button('Cancelar', use_container_width=True)
+                
+                if btn_upd:
+                    try:
+                        cliente_seleccionado.nombre = n_nom
+                        cliente_seleccionado.apellidos = n_ape
+                        cliente_seleccionado.edad = n_eda
+                        cliente_seleccionado.telefono = n_tel
+                        cliente_seleccionado.correo = n_ema
+                        crud_cliente.actualizar(cliente_seleccionado)
+                        st.success('Datos actualizados.')
+                        st.session_state.pop('editing_cliente_id', None)
+                        st.session_state.editing_active = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f'Error al actualizar: {e}')
+                if btn_del:
+                    st.session_state.confirming_delete_cliente = True
+                    st.rerun()
+                if btn_can:
+                    st.session_state.pop('editing_cliente_id', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+        return
+
+    active_tab = st.session_state.pop('active_tab_cliente', 'Listado')
+    if active_tab == 'Nuevo Cliente':
+        tab2, tab1, tab3 = st.tabs(['Nuevo Cliente', 'Listado', 'Editar / Eliminar'])
+    else:
+        tab1, tab2, tab3 = st.tabs(['Listado', 'Nuevo Cliente', 'Editar / Eliminar'])
     with tab1:
         st.subheader('Listado General de Clientes')
         with st.spinner('Cargando clientes...'):
@@ -142,33 +215,22 @@ def pagina_clientes():
                 resultados = crud_cliente.filtrar(limit=PAGE_SIZE, offset=st.session_state.edit_cliente_page * PAGE_SIZE, **filtros)
             if resultados:
                 opciones = {f'{c.noIdentificacion} - {c.nombre} {c.apellidos}': c for c in resultados}
-                sel = st.selectbox('Seleccione el cliente a editar/eliminar', list(opciones.keys()))
+                sel = st.selectbox('Seleccione el cliente', list(opciones.keys()))
                 cliente_seleccionado = opciones[sel]
-                st.markdown(f'**Editando: {cliente_seleccionado.nombre} {cliente_seleccionado.apellidos}**')
-                with st.form('form_edit_cliente'):
-                    n_nom = st.text_input('Nombre', value=cliente_seleccionado.nombre)
-                    n_ape = st.text_input('Apellidos', value=cliente_seleccionado.apellidos)
-                    n_eda = st.number_input('Edad', value=int(cliente_seleccionado.edad), min_value=0, max_value=120)
-                    n_tel = st.text_input('Teléfono', value=cliente_seleccionado.telefono if cliente_seleccionado.telefono else '')
-                    n_ema = st.text_input('Correo', value=cliente_seleccionado.correo if cliente_seleccionado.correo else '')
-                    col_b1, col_b2 = st.columns(2)
-                    btn_upd = col_b1.form_submit_button('Actualizar Datos', use_container_width=True)
-                    btn_del = col_b2.form_submit_button('Eliminar Cliente', use_container_width=True)
-                    if btn_upd:
-                        try:
-                            cliente_seleccionado.nombre = n_nom
-                            cliente_seleccionado.apellidos = n_ape
-                            cliente_seleccionado.edad = n_eda
-                            cliente_seleccionado.telefono = n_tel
-                            cliente_seleccionado.correo = n_ema
-                            crud_cliente.actualizar(cliente_seleccionado)
-                            st.success('Datos actualizados.')
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f'Error al actualizar: {e}')
-                    if btn_del:
-                        crud_cliente.eliminar(cliente_seleccionado.id)
-                        st.warning('Cliente y registros asociados eliminados.')
-                        st.rerun()
+                
+                # Show read-only details of the selected client
+                st.markdown(f"### Detalles del Cliente Seleccionado")
+                c_d1, c_d2 = st.columns(2)
+                c_d1.markdown(f"**Nombre Completo:** {cliente_seleccionado.nombre} {cliente_seleccionado.apellidos}")
+                c_d1.markdown(f"**Identificación (DNI):** {cliente_seleccionado.noIdentificacion}")
+                c_d1.markdown(f"**Edad:** {cliente_seleccionado.edad} | **Sexo:** {cliente_seleccionado.sexo}")
+                c_d2.markdown(f"**País:** {cat['pais_id_n'].get(cliente_seleccionado.idPais, 'N/A')}")
+                c_d2.markdown(f"**Teléfono:** {cliente_seleccionado.telefono if cliente_seleccionado.telefono else 'N/A'}")
+                c_d2.markdown(f"**Correo:** {cliente_seleccionado.correo if cliente_seleccionado.correo else 'N/A'}")
+                
+                if st.button(" Iniciar Edición / Eliminación", use_container_width=True, type="primary"):
+                    st.session_state.editing_cliente_id = cliente_seleccionado.id
+                    st.session_state.editing_active = True
+                    st.rerun()
             else:
                 st.info('No hay resultados en esta página.')

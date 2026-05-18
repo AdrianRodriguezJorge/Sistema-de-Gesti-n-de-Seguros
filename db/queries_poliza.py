@@ -1,4 +1,4 @@
-from data.class_poliza import Poliza
+from models.poliza import Poliza
 from db.conexionDB import Database
 from db.queries_base import BaseCrud 
   
@@ -74,3 +74,43 @@ class CrudPoliza(BaseCrud):
         params = (o.idTipoSeguro, o.fechaInicio, o.fechaFin, o.primaMensual, o.idEstadoPoliza, o.montoAsegurado, o.idCliente, o.id)
         with Database() as db: 
             db.execute(sql, params)
+
+    def eliminar(self, id_poliza):
+        with Database() as db:
+            db.execute("DELETE FROM pago WHERE idpoliza = %s", (id_poliza,))
+            db.execute("DELETE FROM poliza_cobertura WHERE idpoliza = %s", (id_poliza,))
+            db.execute("DELETE FROM reclamacion_rechazada WHERE idreclamacion IN (SELECT idreclamacion FROM reclamacion WHERE idpoliza = %s)", (id_poliza,))
+            db.execute("DELETE FROM reclamacion WHERE idpoliza = %s", (id_poliza,))
+            db.execute("DELETE FROM poliza_cancelada WHERE idpoliza = %s", (id_poliza,))
+            db.execute("DELETE FROM poliza WHERE idpoliza = %s", (id_poliza,))
+
+
+# Funciones de compatibilidad para la interfaz UI
+def listar_polizas():
+    registros = CrudPoliza().obtener_todos()
+    return [{
+        "idpoliza": r.id,
+        "idtiposeguro": r.idTipoSeguro,
+        "fechainicio": r.fechaInicio,
+        "fechafin": r.fechaFin,
+        "primamensual": r.primaMensual,
+        "idestadopoliza": r.idEstadoPoliza,
+        "montoasegurado": r.montoAsegurado,
+        "idcliente": r.idCliente
+    } for r in registros] if registros else []
+
+def obtener_poliza_por_id(id_poliza):
+    r = CrudPoliza().obtener(id_poliza)
+    if r:
+        return {
+            "idpoliza": r.id,
+            "idtiposeguro": r.idTipoSeguro,
+            "fechainicio": r.fechaInicio,
+            "fechafin": r.fechaFin,
+            "primamensual": r.primaMensual,
+            "idestadopoliza": r.idEstadoPoliza,
+            "montoasegurado": r.montoAsegurado,
+            "idcliente": r.idCliente
+        }
+    return None
+

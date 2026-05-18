@@ -1,4 +1,4 @@
-from data.class_cliente import Cliente
+from models.cliente import Cliente
 from db.conexionDB import Database
 from db.queries_base import BaseCrud
 
@@ -175,3 +175,38 @@ class CrudCliente(BaseCrud):
             # 2. Eliminar el cliente
             sql_del_cliente = "DELETE FROM cliente WHERE idcliente = %s"
             db.execute(sql_del_cliente, (cliente_id,))
+
+
+# Funciones de compatibilidad para la interfaz UI
+def listar_clientes():
+    registros = CrudCliente().obtener_todos()
+    return [{
+        "idcliente": r.id,
+        "nombre": r.nombre,
+        "apellidos": r.apellidos,
+        "no_identificacion": r.noIdentificacion,
+        "edad": r.edad,
+        "sexo": r.sexo,
+        "dir_postal": r.dirPostal,
+        "telefono": r.telefono,
+        "correo": r.correo,
+        "idpais": r.idPais
+    } for r in registros] if registros else []
+
+def obtener_cliente_por_id(id_cliente):
+    r = CrudCliente().obtener(id_cliente)
+    if r:
+        return {
+            "idcliente": r.id,
+            "nombre": r.nombre,
+            "apellidos": r.apellidos,
+            "no_identificacion": r.noIdentificacion,
+            "edad": r.edad,
+            "sexo": r.sexo,
+            "dir_postal": r.dirPostal,
+            "telefono": r.telefono,
+            "correo": r.correo,
+            "idpais": r.idPais
+        }
+    return None
+

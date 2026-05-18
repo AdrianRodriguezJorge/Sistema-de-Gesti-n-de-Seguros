@@ -1,4 +1,4 @@
-from data.class_poliza_cobertura import PolizaCobertura
+from models.poliza_cobertura import PolizaCobertura
 from db.conexionDB import Database
 from db.queries_base import BaseCrud
 

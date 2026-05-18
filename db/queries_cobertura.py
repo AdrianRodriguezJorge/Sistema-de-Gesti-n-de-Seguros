@@ -1,4 +1,4 @@
-from data.class_cobertura import Cobertura
+from models.cobertura import Cobertura
 from db.crud_generico import CrudGenerico
 
 def _mapear_cobertura(fila):

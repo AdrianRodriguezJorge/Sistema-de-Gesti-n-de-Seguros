@@ -1,13 +1,66 @@
 import streamlit as st
 import pandas as pd
-from data.class_cobertura import Cobertura
+from models.cobertura import Cobertura
 from db.queries_cobertura import CrudCobertura
 
 def pagina_coberturas():
     st.title('Gestion de Coberturas')
     st.divider()
-    if 'cobertura_edit' not in st.session_state:
-        st.session_state.cobertura_edit = None
+    
+    # Check if there is an active editing session for a coverage
+    cobertura = st.session_state.get('cobertura_edit')
+    
+    if cobertura:
+        st.subheader(f'Editar Cobertura #{cobertura.id}')
+        
+        # Check if confirming deletion
+        confirm_del = st.session_state.get('confirming_delete_cobertura', False)
+        
+        if confirm_del:
+            st.warning(f" Está seguro de que desea eliminar permanentemente la cobertura **#{cobertura.id}**?")
+            st.write(f"Descripción: {cobertura.descripcion}")
+            st.write("Esta acción podría fallar si la cobertura está vinculada a alguna póliza.")
+            col_conf1, col_conf2 = st.columns(2)
+            if col_conf1.button("Sí, eliminar", use_container_width=True, type="primary"):
+                try:
+                    CrudCobertura().eliminar(cobertura.id)
+                    st.success("Cobertura eliminada exitosamente.")
+                    st.session_state.cobertura_edit = None
+                    st.session_state.pop('confirming_delete_cobertura', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f'No se pudo eliminar la cobertura porque está vinculada a pólizas activas (Error de integridad). Detalle: {e}')
+            if col_conf2.button("No, mantener cobertura", use_container_width=True):
+                st.session_state.pop('confirming_delete_cobertura', None)
+                st.rerun()
+        else:
+            with st.form('form_editar_cobertura_focused'):
+                nueva_descripcion = st.text_area('Actualizar Descripcion', value=cobertura.descripcion)
+                c1, c2, c3 = st.columns(3)
+                actualizar = c1.form_submit_button('Actualizar', use_container_width=True)
+                eliminar = c2.form_submit_button('Eliminar', use_container_width=True)
+                cancelar = c3.form_submit_button('Cancelar', use_container_width=True)
+                
+                if actualizar:
+                    try:
+                        cobertura_actualizada = Cobertura(descripcion=nueva_descripcion, idCobertura=cobertura.id)
+                        CrudCobertura().actualizar(cobertura_actualizada)
+                        st.success('Cambios guardados correctamente.')
+                        st.session_state.cobertura_edit = None
+                        st.session_state.editing_active = False
+                        st.rerun()
+                    except ValueError as e:
+                        st.error(f'Error: {e}')
+                if eliminar:
+                    st.session_state.confirming_delete_cobertura = True
+                    st.rerun()
+                if cancelar:
+                    st.session_state.cobertura_edit = None
+                    st.session_state.editing_active = False
+                    st.rerun()
+        return
+
     tab1, tab2, tab3 = st.tabs(['Listado', 'Nueva Cobertura', 'Editar / Eliminar'])
     with tab1:
         st.subheader('Coberturas Disponibles')
@@ -43,31 +96,8 @@ def pagina_coberturas():
             resultado_busqueda = CrudCobertura().obtener(identificador_busqueda)
             if resultado_busqueda:
                 st.session_state.cobertura_edit = resultado_busqueda
+                st.session_state.editing_active = True
+                st.rerun()
             else:
                 st.error('No se encontro la cobertura.')
                 st.session_state.cobertura_edit = None
-        if st.session_state.cobertura_edit:
-            cobertura = st.session_state.cobertura_edit
-            st.info(f'Editando Cobertura #{cobertura.id}')
-            with st.form('form_editar_cobertura'):
-                nueva_descripcion = st.text_area('Actualizar Descripcion', value=cobertura.descripcion)
-                col1, col2 = st.columns(2)
-                actualizar = col1.form_submit_button('Actualizar', use_container_width=True)
-                eliminar = col2.form_submit_button('Eliminar', use_container_width=True)
-            if actualizar:
-                try:
-                    cobertura_actualizada = Cobertura(descripcion=nueva_descripcion, idCobertura=cobertura.id)
-                    CrudCobertura().actualizar(cobertura_actualizada)
-                    st.success('Cambios guardados correctamente.')
-                    st.session_state.cobertura_edit = None
-                    st.rerun()
-                except ValueError as e:
-                    st.error(f'Error: {e}')
-            if eliminar:
-                try:
-                    CrudCobertura().eliminar(cobertura.id)
-                    st.warning('Cobertura eliminada.')
-                    st.session_state.cobertura_edit = None
-                    st.rerun()
-                except Exception as e:
-                    st.error(f'No se pudo eliminar: {e}')

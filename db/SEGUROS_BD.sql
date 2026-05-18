@@ -177,21 +177,23 @@ INSERT INTO pais (idpais, nombre) VALUES
 INSERT INTO tipo_seguro (idtiposeguro, nombre) VALUES 
 (1, 'Vida'),
 (2, 'Automóvil'),
-(3, 'Hogar');
+(3, 'Hogar'),
+(4, 'Salud');
 
 INSERT INTO estado_poliza (idestadopoliza, nombre) VALUES 
 (1, 'Activa'),
-(2, 'Inactiva'),
+(2, 'Vencida'),
 (3, 'Cancelada');
 
 INSERT INTO tipo_siniestro (idtiposiniestro, nombre) VALUES 
 (1, 'Accidente de tráfico'),
 (2, 'Robo'),
 (3, 'Incendio'),
-(4, 'Inundación');
+(4, 'Inundación'),
+(5, 'Enfermedad');
 
 INSERT INTO estado_reclamacion (idestadoreclamacion, nombre) VALUES 
-(1, 'Presentada'),
+(1, 'En proceso'),
 (2, 'Aprobada'),
 (3, 'Rechazada');
 
@@ -285,10 +287,119 @@ INSERT INTO reclamacion (idreclamacion, idtiposiniestro, fecha_siniestro, monto_
 (6, 3, '2025-12-10', 10000.00, 1, 0.00, 10),
 (7, 1, '2026-03-15', 25000.00, 2, 22000.00, 14);
 
+-- Insertar reaseguradoras de prueba
+INSERT INTO reaseguradora (idreaseguradora, nombre, idpais, idtiporeaseguro) VALUES
+(1, 'Reaseguradora Universal', 1, 1),
+(2, 'Mapfre Reaseguros', 2, 2);
+
+-- Insertar participaciones de reaseguro de prueba
+INSERT INTO participacion_reaseguro (idreaseguradora, idtiposeguro, porcentaje) VALUES
+(1, 1, 30.00),
+(1, 2, 20.00),
+(2, 3, 50.00);
+
+-- Inserción de Agencia de prueba por defecto si no existe
+INSERT INTO agencia (idagencia, nombre, direccion, telefono, email, director_general, jefe_seguros, jefe_reclamaciones) VALUES
+(1, 'Seguros La Confianza S.A.', 'Av. Winston Churchill 101, Santo Domingo', '809-555-1234', 'info@laconfianza.com.do', 'Lic. Alejandro Castro', 'Ing. Marcos Ruiz', 'Dra. Elena Medina')
+ON CONFLICT DO NOTHING;
+
 -- Ajustar las secuencias de las tablas de datos de prueba
 SELECT SETVAL('cliente_idcliente_seq', (SELECT MAX(idcliente) FROM cliente));
 SELECT SETVAL('poliza_idpoliza_seq', (SELECT MAX(idpoliza) FROM poliza));
 SELECT SETVAL('cobertura_idcobertura_seq', (SELECT MAX(idcobertura) FROM cobertura));
 SELECT SETVAL('pago_idpago_seq', (SELECT MAX(idpago) FROM pago));
 SELECT SETVAL('reclamacion_idreclamacion_seq', (SELECT MAX(idreclamacion) FROM reclamacion));
+SELECT SETVAL('reaseguradora_idreaseguradora_seq', (SELECT MAX(idreaseguradora) FROM reaseguradora));
+SELECT SETVAL('agencia_idagencia_seq', (SELECT MAX(idagencia) FROM agencia));
 
+
+-- ==========================================
+-- CREACIÓN DE ÍNDICES DE BÚSQUEDA (Req. Rendimiento)
+-- ==========================================
+CREATE INDEX IF NOT EXISTS idx_cliente_no_identificacion ON cliente(no_identificacion);
+CREATE INDEX IF NOT EXISTS idx_poliza_idcliente ON poliza(idcliente);
+CREATE INDEX IF NOT EXISTS idx_reclamacion_idpoliza ON reclamacion(idpoliza);
+CREATE INDEX IF NOT EXISTS idx_pago_idpoliza ON pago(idpoliza);
+
+
+-- ==========================================
+-- CREACIÓN DE DISPARADORES Y FUNCIONES (Triggers)
+-- ==========================================
+
+-- 1. Trigger de validación de vigencia de fechas en pólizas (fecha_fin > fecha_inicio)
+CREATE OR REPLACE FUNCTION fn_validar_fechas_poliza()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.fecha_fin <= NEW.fecha_inicio THEN
+        RAISE EXCEPTION 'La fecha de fin de la póliza (%s) debe ser posterior a la fecha de inicio (%s)', NEW.fecha_fin, NEW.fecha_inicio;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validar_fechas_poliza ON poliza;
+CREATE TRIGGER trg_validar_fechas_poliza
+BEFORE INSERT OR UPDATE ON poliza
+FOR EACH ROW
+EXECUTE FUNCTION fn_validar_fechas_poliza();
+
+
+-- 2. Trigger de validación de reclamaciones (póliza activa y fecha del siniestro válida)
+CREATE OR REPLACE FUNCTION fn_validar_creacion_reclamacion()
+RETURNS TRIGGER AS $$
+DECLARE
+    poliza_estado VARCHAR(30);
+    poliza_inicio DATE;
+    poliza_fin DATE;
+BEGIN
+    -- Obtener datos de la póliza
+    SELECT ep.nombre, p.fecha_inicio, p.fecha_fin
+    INTO poliza_estado, poliza_inicio, poliza_fin
+    FROM poliza p
+    JOIN estado_poliza ep ON p.idestadopoliza = ep.idestadopoliza
+    WHERE p.idpoliza = NEW.idpoliza;
+
+    IF poliza_estado != 'Activa' THEN
+        RAISE EXCEPTION 'No se pueden crear reclamaciones sobre pólizas con estado ''%''. La póliza debe estar activa.', poliza_estado;
+    END IF;
+
+    IF NEW.fecha_siniestro < poliza_inicio OR NEW.fecha_siniestro > poliza_fin THEN
+        RAISE EXCEPTION 'La fecha del siniestro (%s) debe estar comprendida dentro de la vigencia de la póliza (%s al %s)', NEW.fecha_siniestro, poliza_inicio, poliza_fin;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validar_creacion_reclamacion ON reclamacion;
+CREATE TRIGGER trg_validar_creacion_reclamacion
+BEFORE INSERT OR UPDATE ON reclamacion
+FOR EACH ROW
+EXECUTE FUNCTION fn_validar_creacion_reclamacion();
+
+
+-- 3. Trigger para validar que el porcentaje total de participación en reaseguro para un tipo de seguro no exceda el 100%
+CREATE OR REPLACE FUNCTION fn_validar_porcentaje_participacion()
+RETURNS TRIGGER AS $$
+DECLARE
+    total_porcentaje DECIMAL(5,2);
+BEGIN
+    -- Sumar los porcentajes de participación existentes, excluyendo la reaseguradora actual si es UPDATE
+    SELECT COALESCE(SUM(porcentaje), 0)
+    INTO total_porcentaje
+    FROM participacion_reaseguro
+    WHERE idtiposeguro = NEW.idtiposeguro AND idreaseguradora != NEW.idreaseguradora;
+
+    IF (total_porcentaje + NEW.porcentaje) > 100.00 THEN
+        RAISE EXCEPTION 'El porcentaje total de participación de reaseguro para este tipo de seguro no puede exceder el 100%% (Total acumulado: %s%%, Intentado agregar: %s%%)', total_porcentaje, NEW.porcentaje;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validar_porcentaje_participacion ON participacion_reaseguro;
+CREATE TRIGGER trg_validar_porcentaje_participacion
+BEFORE INSERT OR UPDATE ON participacion_reaseguro
+FOR EACH ROW
+EXECUTE FUNCTION fn_validar_porcentaje_participacion();

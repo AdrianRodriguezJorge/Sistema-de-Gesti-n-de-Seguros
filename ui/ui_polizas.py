@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from data.class_poliza import Poliza
-from data.class_poliza_cancelada import PolizaCancelada
-from data.class_poliza_cobertura import PolizaCobertura
-from data.class_cobertura import Cobertura
-from data.class_pago import Pago
+from models.poliza import Poliza
+from models.poliza_cancelada import PolizaCancelada
+from models.poliza_cobertura import PolizaCobertura
+from models.cobertura import Cobertura
+from models.pago import Pago
 from db.conexionDB import Database
 from db.queries_poliza import CrudPoliza
 from db.queries_poliza_cancelada import CrudPolizaCancelada
@@ -34,10 +34,98 @@ def pagina_polizas():
     st.title('Gestion de Polizas')
     catalogos = _cargar_catalogos()
     lista_polizas = CrudPoliza().obtener_todos()
+    crud_poliza = CrudPoliza()
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        'Listado', 'Nueva Poliza', 'Editar Poliza', 'Coberturas', 'Pagos'
-    ])
+    # Check if there is an active editing session for a policy
+    edit_id = st.session_state.get('editing_poliza_id')
+    
+    if edit_id:
+        poliza_sel = crud_poliza.obtener(edit_id)
+        if not poliza_sel:
+            st.error("La póliza seleccionada no existe.")
+            st.session_state.pop('editing_poliza_id', None)
+            st.session_state.editing_active = False
+            st.rerun()
+            
+        st.subheader(f'Editar Póliza #{poliza_sel.id}')
+        
+        # Check if we are confirming deletion
+        confirm_del = st.session_state.get('confirming_delete_poliza', False)
+        
+        if confirm_del:
+            st.warning(f" Está seguro de que desea eliminar permanentemente la póliza **#{poliza_sel.id}**?")
+            st.write("Esta acción es irreversible y eliminará todos los pagos y coberturas asociados a esta póliza.")
+            col_conf1, col_conf2 = st.columns(2)
+            if col_conf1.button("Sí, eliminar permanentemente", use_container_width=True, type="primary"):
+                try:
+                    # Let's delete related payments and coverages first to maintain integrity
+                    with Database() as db:
+                        db.execute('DELETE FROM poliza_cobertura WHERE idpoliza=%s', (poliza_sel.id,))
+                        db.execute('DELETE FROM pago WHERE idpoliza=%s', (poliza_sel.id,))
+                        db.execute('DELETE FROM poliza_cancelada WHERE idpoliza=%s', (poliza_sel.id,))
+                        db.execute('DELETE FROM reclamacion WHERE idpoliza=%s', (poliza_sel.id,))
+                    crud_poliza.eliminar(poliza_sel.id)
+                    st.success("Póliza eliminada con éxito.")
+                    st.session_state.pop('editing_poliza_id', None)
+                    st.session_state.pop('confirming_delete_poliza', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar: {e}")
+            if col_conf2.button("No, mantener registro", use_container_width=True):
+                st.session_state.pop('confirming_delete_poliza', None)
+                st.rerun()
+        else:
+            with st.form('form_editar_poliza_focused'):
+                col1, col2 = st.columns(2)
+                nueva_prima = col1.number_input('Prima Mensual ($)', value=float(poliza_sel.primaMensual), min_value=0.01, format='%.2f')
+                nuevo_monto = col2.number_input('Monto Asegurado ($)', value=float(poliza_sel.montoAsegurado), min_value=0.01, format='%.2f')
+                nombres_estados = list(catalogos['ep_n_id'].keys())
+                idx_estado = list(catalogos['ep_id_n'].keys()).index(poliza_sel.idEstadoPoliza) if poliza_sel.idEstadoPoliza in catalogos['ep_id_n'] else 0
+                nuevo_estado = st.selectbox('Estado', nombres_estados, index=idx_estado)
+                motivo_edicion = ''
+                if nuevo_estado == 'Cancelada':
+                    motivo_edicion = st.text_area('Motivo de cancelacion', placeholder='Ingrese el motivo...')
+                
+                col_b1, col_b2, col_b3 = st.columns(3)
+                btn_guardar = col_b1.form_submit_button('Guardar Cambios', use_container_width=True)
+                btn_del = col_b2.form_submit_button('Eliminar Póliza', use_container_width=True)
+                btn_can = col_b3.form_submit_button('Cancelar', use_container_width=True)
+                
+                if btn_guardar:
+                    try:
+                        ya_cancelada = catalogos['ep_id_n'].get(poliza_sel.idEstadoPoliza) == 'Cancelada'
+                        poliza_sel.primaMensual = nueva_prima
+                        poliza_sel.montoAsegurado = nuevo_monto
+                        poliza_sel.idEstadoPoliza = catalogos['ep_n_id'][nuevo_estado]
+                        crud_poliza.actualizar(poliza_sel)
+                        if nuevo_estado == 'Cancelada' and not ya_cancelada:
+                            can_obj = PolizaCancelada(motivo=motivo_edicion.strip() if motivo_edicion.strip() else None, idPoliza=poliza_sel.id)
+                            CrudPolizaCancelada().crear(can_obj)
+                        st.success('Póliza actualizada.')
+                        st.session_state.pop('editing_poliza_id', None)
+                        st.session_state.editing_active = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f'Error al actualizar: {e}')
+                if btn_del:
+                    st.session_state.confirming_delete_poliza = True
+                    st.rerun()
+                if btn_can:
+                    st.session_state.pop('editing_poliza_id', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+        return
+
+    active_tab = st.session_state.pop('active_tab_poliza', 'Listado')
+    if active_tab == 'Nueva Poliza':
+        tab2, tab1, tab3, tab4, tab5 = st.tabs([
+            'Nueva Poliza', 'Listado', 'Editar Poliza', 'Coberturas', 'Pagos'
+        ])
+    else:
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            'Listado', 'Nueva Poliza', 'Editar Poliza', 'Coberturas', 'Pagos'
+        ])
     
     # Tab 1: Listado General
     with tab1:
@@ -191,7 +279,7 @@ def pagina_polizas():
         with st.form('form_buscar_poliza'):
             st.markdown('**Buscar Poliza para Editar**')
             col_bus1, col_bus2, col_bus3 = st.columns([2, 2, 1])
-            busqueda_id = col_bus1.text_input('Por N° de Poliza')
+            busqueda_id = col_bus1.text_input('Por Nde Poliza')
             busqueda_cliente = col_bus2.text_input('Por Nombre de Cliente')
             busqueda_estado = col_bus3.selectbox('Por Estado', ['Todos'] + list(catalogos['ep_id_n'].values()))
             st.form_submit_button('Buscar', use_container_width=True)
@@ -201,7 +289,7 @@ def pagina_polizas():
             try:
                 filtros['idPoliza'] = int(busqueda_id)
             except ValueError:
-                st.error('N° de Poliza debe ser numero')
+                st.error('Nde Poliza debe ser numero')
                 filtros['idPoliza'] = -1
         if busqueda_estado != 'Todos':
             filtros['idEstadoPoliza'] = catalogos['ep_n_id'][busqueda_estado]
@@ -237,31 +325,25 @@ def pagina_polizas():
                 for p in lista_filtrada if p.idCliente in catalogos['cli_id_obj']
             }
             if opciones_sel:
-                sel = st.selectbox('Seleccione la poliza a editar', list(opciones_sel.keys()))
+                sel = st.selectbox('Seleccione la póliza', list(opciones_sel.keys()))
                 poliza_sel = opciones_sel[sel]
                 st.divider()
-                st.markdown(f'**Editando Poliza #{poliza_sel.id}**')
-                with st.form('form_editar_poliza'):
-                    col1, col2 = st.columns(2)
-                    nueva_prima = col1.number_input('Prima Mensual ($)', value=float(poliza_sel.primaMensual), min_value=0.01, format='%.2f')
-                    nuevo_monto = col2.number_input('Monto Asegurado ($)', value=float(poliza_sel.montoAsegurado), min_value=0.01, format='%.2f')
-                    nombres_estados = list(catalogos['ep_n_id'].keys())
-                    idx_estado = list(catalogos['ep_id_n'].keys()).index(poliza_sel.idEstadoPoliza) if poliza_sel.idEstadoPoliza in catalogos['ep_id_n'] else 0
-                    nuevo_estado = st.selectbox('Estado', nombres_estados, index=idx_estado)
-                    motivo_edicion = ''
-                    if nuevo_estado == 'Cancelada':
-                        motivo_edicion = st.text_area('Motivo de cancelacion', placeholder='Ingrese el motivo...')
-                    btn_guardar = st.form_submit_button('Guardar Cambios', use_container_width=True)
-                if btn_guardar:
-                    ya_cancelada = catalogos['ep_id_n'].get(poliza_sel.idEstadoPoliza) == 'Cancelada'
-                    poliza_sel.primaMensual = nueva_prima
-                    poliza_sel.montoAsegurado = nuevo_monto
-                    poliza_sel.idEstadoPoliza = catalogos['ep_n_id'][nuevo_estado]
-                    CrudPoliza().actualizar(poliza_sel)
-                    if nuevo_estado == 'Cancelada' and not ya_cancelada:
-                        can_obj = PolizaCancelada(motivo=motivo_edicion.strip() if motivo_edicion.strip() else None, idPoliza=poliza_sel.id)
-                        CrudPolizaCancelada().crear(can_obj)
-                    st.success('Poliza actualizada.')
+                
+                # Show read-only details of the selected policy
+                st.markdown(f"### Detalles de la Póliza Seleccionada")
+                p_d1, p_d2 = st.columns(2)
+                p_d1.markdown(f"**Número de Póliza:** #{poliza_sel.id}")
+                cliente_pol = catalogos['cli_id_obj'].get(poliza_sel.idCliente)
+                p_d1.markdown(f"**Cliente:** {cliente_pol.nombre} {cliente_pol.apellidos}" if cliente_pol else "**Cliente:** Desconocido")
+                p_d1.markdown(f"**Tipo de Seguro:** {catalogos['ts_id_n'].get(poliza_sel.idTipoSeguro, 'N/A')}")
+                p_d2.markdown(f"**Vigencia:** Desde {poliza_sel.fechaInicio} hasta {poliza_sel.fechaFin}")
+                p_d2.markdown(f"**Prima Mensual:** ${poliza_sel.primaMensual:,.2f}")
+                p_d2.markdown(f"**Monto Asegurado:** ${poliza_sel.montoAsegurado:,.2f}")
+                p_d2.markdown(f"**Estado Actual:** {catalogos['ep_id_n'].get(poliza_sel.idEstadoPoliza, 'N/A')}")
+                
+                if st.button(" Iniciar Edición / Eliminación", use_container_width=True, type="primary"):
+                    st.session_state.editing_poliza_id = poliza_sel.id
+                    st.session_state.editing_active = True
                     st.rerun()
             else:
                 st.info('No hay resultados.')

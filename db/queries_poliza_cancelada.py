@@ -1,4 +1,4 @@
-from data.class_poliza_cancelada import PolizaCancelada
+from models.poliza_cancelada import PolizaCancelada
 from db.crud_generico import CrudGenerico
 
 def _mapear_poliza_cancelada(fila):

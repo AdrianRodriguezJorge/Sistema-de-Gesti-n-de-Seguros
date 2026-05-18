@@ -1,0 +1,203 @@
+ Proyecto: Sistema de Gestión de Seguros 
+ 
+Una agencia de seguros desea implementar un sistema para gestionar sus 
+pólizas y controlar los ingresos provenientes de las primas de seguro 
+pagadas por sus clientes. La agencia ofrece diferentes tipos de seguros, 
+como seguro de vida, seguro de hogar, seguro de auto y seguro de salud.  
+ 
+De cada cliente se conoce su nombre y apellidos, número de 
+identificación, edad, sexo, dirección postal, teléfono y correo 
+electrónico. Un cliente puede tener múltiples pólizas, y cada póliza 
+puede tener diferentes coberturas. De cada póliza se conoce su número, 
+tipo de seguro (vida, hogar, auto, salud), fecha de inicio, fecha de fin, 
+prima mensual, estado (activa, vencida, cancelada) y el monto total 
+asegurado. 
+ 
+Además, la agencia mantiene relaciones comerciales con diferentes 
+compañías reaseguradoras, que ayudan a distribuir el riesgo asociado con 
+las pólizas emitidas. De cada compañía reaseguradora se conoce su nombre, 
+país de origen, tipo de reaseguro ofrecido (proporcional, no 
+proporcional), y los porcentajes de participación en los diferentes tipos 
+de seguros. 
+ 
+Cada siniestro reportado por un cliente genera una reclamación, de la 
+cual se conoce su número, tipo de siniestro (accidente, enfermedad, 
+desastre natural, etc.), fecha del siniestro, monto reclamado, estado de 
+la reclamación (en proceso, aprobada, rechazada) y monto indemnizado. 
+ 
+Para la correcta gestión de las pólizas y siniestros, el sistema debe 
+proporcionar las siguientes salidas: 
+ 
+ Listado de Clientes 
+- Fecha del reporte 
+- Para cada país: 
+    - País 
+    - Para cada cliente de ese país: 
+        - Nombre del cliente 
+        - Número de identificación 
+        - Cantidad de pólizas activas 
+        - Valor total de las primas pagadas por el cliente hasta la fecha 
+ 
+ Listado de Pólizas 
+- Fecha del reporte 
+- Para cada tipo de seguro: 
+    - Tipo de seguro 
+    - Para cada póliza de ese tipo: 
+        - Número de póliza 
+        - Nombre del cliente 
+        - Fecha de inicio 
+        - Fecha de fin 
+        - Prima mensual 
+        - Monto total asegurado 
+        - Estado 
+ 
+ Listado de Reclamaciones 
+- Nombre del cliente 
+- Número de póliza 
+- Tipo de seguro 
+- Número de reclamación 
+- Tipo de siniestro 
+- Fecha del siniestro 
+- Monto reclamado 
+- Estado de la reclamación 
+- Monto indemnizado 
+ 
+ Listado de Reaseguradoras 
+- Fecha del reporte 
+- Para cada reaseguradora: 
+    - Nombre de la reaseguradora 
+    - País de origen 
+    - Tipo de reaseguro ofrecido 
+    - Porcentajes de participación en diferentes tipos de seguros 
+ 
+ Listado de Pólizas Vencidas 
+- Fecha del reporte 
+- Para cada póliza: 
+    - Número de póliza 
+    - Nombre del cliente 
+    - Tipo de seguro 
+    - Fecha de inicio 
+    - Fecha de fin 
+    - Monto total asegurado 
+ 
+ Listado de Clientes con Pólizas Canceladas 
+- Fecha del reporte 
+- Para cada cliente: 
+    - Nombre del cliente 
+    - Número de identificación 
+    - Cantidad de pólizas canceladas 
+    - Motivo de cancelación (si se tiene) 
+ 
+ Resumen de Pólizas por Tipo de Seguro 
+- Fecha del reporte 
+- Para cada tipo de seguro: 
+    - Tipo de seguro 
+    - Cantidad de pólizas activas 
+    - Total de primas mensuales 
+    - Total de monto asegurado 
+ 
+ Resumen de Reclamaciones por Estado 
+- Fecha del reporte 
+- Para cada estado de reclamación: 
+    - Estado de la reclamación 
+    - Cantidad de reclamaciones 
+    - Total de monto reclamado 
+    - Total de monto indemnizado 
+ 
+ Listado de Ingresos Mensuales 
+- Fecha del reporte 
+- Ingreso total anual 
+- Para cada mes: 
+    - Nombre del mes 
+    - Ingreso mensual por concepto de primas 
+ 
+ Reporte de Clientes con Reclamaciones Aprobadas 
+- Fecha del reporte 
+- Para cada cliente: 
+    - Nombre del cliente 
+    - Número de identificación 
+    - Cantidad de reclamaciones aprobadas 
+    - Total de monto indemnizado 
+ 
+ Reporte de Clientes con Reclamaciones Rechazadas 
+- Fecha del reporte 
+- Para cada cliente: 
+    - Nombre del cliente 
+    - Número de identificación 
+    - Cantidad de reclamaciones rechazadas 
+    - Motivo del rechazo (si se tiene) 
+ 
+ Requerimientos Funcionales: 
+1. El sistema debe permitir gestionar de forma abierta toda la 
+información almacenada. 
+2. El sistema debe garantizar la gestión integral de las pólizas, 
+incluyendo la creación, modificación y cancelación de las mismas. 
+3. El sistema debe permitir la gestión de reclamaciones, incluyendo el 
+seguimiento del estado de cada reclamación. 
+4. El sistema debe permitir la gestión de las reaseguradoras y sus 
+participaciones en los diferentes tipos de seguros. 
+5. El sistema debe calcular y generar informes detallados de los ingresos 
+provenientes de las primas de seguro. 
+6. El sistema debe garantizar la integridad relacional de toda la base de 
+datos. 
+7. El sistema debe ofrecer mecanismos de búsqueda y filtrado para 
+facilitar la consulta de información específica. 
+8. El sistema debe generar alertas para pólizas próximas a vencerse y 
+reclamaciones pendientes de resolución. 
+ 
+ Reportes Específicos: 
+1. **Ficha de la Agencia de Seguros**: 
+    - Nombre de la agencia 
+    - Dirección postal 
+    - Teléfono y email de contacto 
+    - Nombre del director general 
+    - Nombre del jefe del departamento de seguros 
+    - Nombre del jefe del departamento de reclamaciones 
+ 
+2. **Ficha de un Cliente Determinado**: 
+    - Nombre del cliente 
+    - Número de identificación 
+    - Información de contacto (teléfono, dirección postal, email) 
+    - Cantidad de pólizas activas 
+    - Valor total de las primas pagadas 
+    - Listado de reclamaciones (si las tiene) 
+ 
+3. **Ficha de una Reaseguradora Asociada a la Agencia**: 
+    - Nombre de la reaseguradora 
+    - País de origen 
+    - Tipo de reaseguro ofrecido 
+    - Porcentajes de participación en los diferentes tipos de seguros 
+ 
+4. **Reporte de Pólizas Emitidas en un Período de Tiempo**: 
+    - Número de póliza 
+    - Nombre del cliente 
+    - Tipo de seguro 
+    - Fecha de inicio 
+    - Fecha de fin 
+    - Prima mensual 
+    - Estado 
+ 
+5. **Reporte de Estado de las Reclamaciones**: 
+    - Número de reclamación 
+    - Nombre del cliente 
+    - Número de póliza 
+    - Tipo de seguro 
+    - Tipo de siniestro 
+    - Fecha del siniestro 
+    - Estado de la reclamación 
+    - Monto reclamado 
+    - Monto indemnizado 
+ 
+6. **Reporte de Ingresos Mensuales por Concepto de Primas**: 
+    - Año 
+    - Mes 
+    - Ingreso mensual por concepto de primas 
+ 
+ Requisitos del Diseño Físico de la Base de Datos: 
+- Implementar llaves primarias y extranjeras para garantizar la 
+integridad referencial. 
+- Utilizar índices de búsqueda para optimizar el rendimiento del sistema. 
+- Implementar restricciones y disparadores para mantener la integridad de 
+los datos. 
+- Diseñar tablas para almacenar información de clientes, pólizas, 
+reclamaciones y reaseguradoras de forma eficiente. 

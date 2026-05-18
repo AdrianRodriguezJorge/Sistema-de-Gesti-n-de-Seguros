@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from data.class_reaseguradora import Reaseguradora
-from data.class_participacion_reaseguro import ParticipacionReaseguro
+from models.reaseguradora import Reaseguradora
+from models.participacion_reaseguro import ParticipacionReaseguro
 from db.queries_reaseguradora import CrudReaseguradora
 from db.queries_participacion_reaseguro import CrudParticipacionReaseguro
 from db.queries_catalogos import CrudPais, CrudTipoReaseguro, CrudTipoSeguro
@@ -16,6 +16,78 @@ def _cargar_mapeos():
 def pagina_reaseguradoras():
     st.title('Gestión de Reaseguradoras')
     mapeos = _cargar_mapeos()
+    crud_rea = CrudReaseguradora()
+    
+    # Check if there is an active editing session
+    edit_id = st.session_state.get('editing_rea_id')
+    
+    if edit_id:
+        reaseguradora_seleccionada = crud_rea.obtener(edit_id)
+        if not reaseguradora_seleccionada:
+            st.error("La reaseguradora seleccionada no existe.")
+            st.session_state.pop('editing_rea_id', None)
+            st.session_state.editing_active = False
+            st.rerun()
+            
+        st.subheader(f'Editar Reaseguradora: {reaseguradora_seleccionada.nombre}')
+        
+        # Check if we are confirming deletion
+        confirm_del = st.session_state.get('confirming_delete_rea', False)
+        
+        if confirm_del:
+            st.warning(f" Está seguro de que desea eliminar permanentemente la reaseguradora **{reaseguradora_seleccionada.nombre}**?")
+            st.write("Esta acción es irreversible y eliminará todos los registros y participaciones asociados.")
+            col_conf1, col_conf2 = st.columns(2)
+            if col_conf1.button("Sí, eliminar permanentemente", use_container_width=True, type="primary"):
+                try:
+                    crud_rea.eliminar(reaseguradora_seleccionada)
+                    st.success("Reaseguradora y participaciones eliminadas.")
+                    st.session_state.pop('editing_rea_id', None)
+                    st.session_state.pop('confirming_delete_rea', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar: {e}")
+            if col_conf2.button("No, mantener registro", use_container_width=True):
+                st.session_state.pop('confirming_delete_rea', None)
+                st.rerun()
+        else:
+            with st.form('form_edit_rea_focused'):
+                nuevo_nombre = st.text_input('Nombre', value=reaseguradora_seleccionada.nombre)
+                nombre_pais_actual = mapeos['p_id_n'].get(reaseguradora_seleccionada.idPais)
+                nuevo_pais = st.selectbox('País', list(mapeos['p_n_id'].keys()), index=list(mapeos['p_n_id'].keys()).index(nombre_pais_actual))
+                nombre_tipo_actual = mapeos['tr_id_n'].get(reaseguradora_seleccionada.idTipoReaseguro)
+                nuevo_tipo = st.selectbox('Tipo Reaseguro', list(mapeos['tr_n_id'].keys()), index=list(mapeos['tr_n_id'].keys()).index(nombre_tipo_actual))
+                
+                c1, c2, c3 = st.columns(3)
+                btn_upd = c1.form_submit_button('Actualizar', use_container_width=True)
+                btn_del = c2.form_submit_button('Eliminar', use_container_width=True)
+                btn_can = c3.form_submit_button('Cancelar', use_container_width=True)
+                
+                if btn_upd:
+                    lista_busqueda = crud_rea.obtener_todos()
+                    nombres_otros = [r.nombre.strip().lower() for r in lista_busqueda if r.id != reaseguradora_seleccionada.id]
+                    if nuevo_nombre.strip().lower() in nombres_otros:
+                        st.error('Ya existe otra reaseguradora con este nombre.')
+                    else:
+                        try:
+                            upd_obj = Reaseguradora(nuevo_nombre, mapeos['p_n_id'][nuevo_pais], mapeos['tr_n_id'][nuevo_tipo], reaseguradora_seleccionada.id)
+                            crud_rea.actualizar(upd_obj)
+                            st.success('Actualizada')
+                            st.session_state.pop('editing_rea_id', None)
+                            st.session_state.editing_active = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f'Error al actualizar: {e}')
+                if btn_del:
+                    st.session_state.confirming_delete_rea = True
+                    st.rerun()
+                if btn_can:
+                    st.session_state.pop('editing_rea_id', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+        return
+
     tab1, tab2, tab3, tab4 = st.tabs(['Listado', 'Nueva Reaseguradora', 'Editar / Eliminar', 'Participaciones'])
     with tab1:
         st.subheader('Listado General de Reaseguradoras')
@@ -56,27 +128,16 @@ def pagina_reaseguradoras():
             opciones_rea = {r.nombre: r for r in lista_busqueda}
             seleccion = st.selectbox('Seleccione una reaseguradora para editar o eliminar:', list(opciones_rea.keys()))
             reaseguradora_seleccionada = opciones_rea[seleccion]
-            with st.form('form_edit_rea'):
-                nuevo_nombre = st.text_input('Nombre', value=reaseguradora_seleccionada.nombre)
-                nombre_pais_actual = mapeos['p_id_n'].get(reaseguradora_seleccionada.idPais)
-                nuevo_pais = st.selectbox('País', list(mapeos['p_n_id'].keys()), index=list(mapeos['p_n_id'].keys()).index(nombre_pais_actual))
-                nombre_tipo_actual = mapeos['tr_id_n'].get(reaseguradora_seleccionada.idTipoReaseguro)
-                nuevo_tipo = st.selectbox('Tipo', list(mapeos['tr_n_id'].keys()), index=list(mapeos['tr_n_id'].keys()).index(nombre_tipo_actual))
-                c1, c2 = st.columns(2)
-                if c1.form_submit_button('Actualizar', use_container_width=True):
-                    nombres_otros = [r.nombre.strip().lower() for r in lista_busqueda if r.id != reaseguradora_seleccionada.id]
-                    if nuevo_nombre.strip().lower() in nombres_otros:
-                        st.error('Ya existe otra reaseguradora con este nombre.')
-                    else:
-                        upd_obj = Reaseguradora(nuevo_nombre, mapeos['p_n_id'][nuevo_pais], mapeos['tr_n_id'][nuevo_tipo], reaseguradora_seleccionada.id)
-                        CrudReaseguradora().actualizar(upd_obj)
-                        st.success('Actualizada')
-                        st.rerun()
-                if c2.form_submit_button('Eliminar', use_container_width=True):
-                    with Database() as db:
-                        CrudReaseguradora().eliminar(reaseguradora_seleccionada)
-                    st.warning('Registro y participaciones eliminados.')
-                    st.rerun()
+            st.markdown("### Detalles de la Reaseguradora")
+            r_d1, r_d2 = st.columns(2)
+            r_d1.markdown(f"**Nombre:** {reaseguradora_seleccionada.nombre}")
+            r_d1.markdown(f"**País:** {mapeos['p_id_n'].get(reaseguradora_seleccionada.idPais, 'N/A')}")
+            r_d2.markdown(f"**Tipo Reaseguro:** {mapeos['tr_id_n'].get(reaseguradora_seleccionada.idTipoReaseguro, 'N/A')}")
+            
+            if st.button(" Iniciar Edición / Eliminación", use_container_width=True, type="primary"):
+                st.session_state.editing_rea_id = reaseguradora_seleccionada.id
+                st.session_state.editing_active = True
+                st.rerun()
     with tab4:
         lista_participaciones_rea = CrudReaseguradora().obtener_todos()
         if not lista_participaciones_rea:
@@ -88,18 +149,30 @@ def pagina_reaseguradoras():
             if mis_participaciones:
                 for p in mis_participaciones:
                     with st.expander(f"{mapeos['ts_id_n'].get(p.idTipoSeguro)} - {p.porcentaje}%"):
-                        with st.form(f'edit_part_{p.idTipoSeguro}'):
-                            nuevo_porc = st.number_input('Porcentaje (%)', 0.0, 100.0, float(p.porcentaje))
-                            btn_upd, btn_del = st.columns(2)
-                            if btn_upd.form_submit_button('Actualizar', use_container_width=True):
-                                p.porcentaje = nuevo_porc
-                                CrudParticipacionReaseguro().actualizar(p)
-                                st.rerun()
-                            if btn_del.form_submit_button('Eliminar', use_container_width=True):
+                        confirm_del_key = f'confirm_del_part_{p.idReaseguradora}_{p.idTipoSeguro}'
+                        if st.session_state.get(confirm_del_key):
+                            st.warning(" Eliminar participación?")
+                            c_col1, c_col2 = st.columns(2)
+                            if c_col1.button("Sí, eliminar", key=f"yes_del_{p.idReaseguradora}_{p.idTipoSeguro}", use_container_width=True, type="primary"):
                                 sql_del = 'DELETE FROM participacion_reaseguro WHERE idreaseguradora = %s AND idtiposeguro = %s'
                                 with Database() as db:
                                     db.execute(sql_del, (p.idReaseguradora, p.idTipoSeguro))
+                                st.session_state.pop(confirm_del_key, None)
                                 st.rerun()
+                            if c_col2.button("No, cancelar", key=f"no_del_{p.idReaseguradora}_{p.idTipoSeguro}", use_container_width=True):
+                                st.session_state.pop(confirm_del_key, None)
+                                st.rerun()
+                        else:
+                            with st.form(f'edit_part_{p.idTipoSeguro}'):
+                                nuevo_porc = st.number_input('Porcentaje (%)', 0.0, 100.0, float(p.porcentaje))
+                                btn_upd, btn_del = st.columns(2)
+                                if btn_upd.form_submit_button('Actualizar', use_container_width=True):
+                                    p.porcentaje = nuevo_porc
+                                    CrudParticipacionReaseguro().actualizar(p)
+                                    st.rerun()
+                                if btn_del.form_submit_button('Eliminar', use_container_width=True):
+                                    st.session_state[confirm_del_key] = True
+                                    st.rerun()
             else:
                 st.caption('No tiene participaciones asignadas aún.')
             st.divider()

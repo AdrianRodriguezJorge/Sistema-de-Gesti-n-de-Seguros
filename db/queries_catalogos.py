@@ -1,4 +1,4 @@
-from data.class_catalogos import Pais, TipoSeguro, EstadoPoliza, TipoSiniestro, EstadoReclamacion, TipoReaseguro
+from models.catalogos import Pais, TipoSeguro, EstadoPoliza, TipoSiniestro, EstadoReclamacion, TipoReaseguro
 from db.crud_generico import CrudGenerico
 
 def _mapear_pais(fila):
@@ -114,3 +114,22 @@ class CrudTipoReaseguro(CrudGenerico):
             condiciones.append("nombre ILIKE %s")
             parametros.append(f"%{nombre}%")
         return super().filtrar(condiciones, parametros)
+
+
+# Funciones de utilidad compatibles con listado de diccionarios para la interfaz UI
+def listar_paises():
+    registros = CrudPais().obtener_todos()
+    return [{"idpais": r.id, "nombre": r.nombre} for r in registros] if registros else []
+
+def listar_tipos_seguro():
+    registros = CrudTipoSeguro().obtener_todos()
+    return [{"idtiposeguro": r.id, "nombre": r.nombre} for r in registros] if registros else []
+
+def listar_estados_reclamacion():
+    registros = CrudEstadoReclamacion().obtener_todos()
+    return [{"idestadoreclamacion": r.id, "nombre": r.nombre} for r in registros] if registros else []
+
+def listar_tipos_reaseguro():
+    registros = CrudTipoReaseguro().obtener_todos()
+    return [{"idtiporeaseguro": r.id, "nombre": r.nombre} for r in registros] if registros else []
+

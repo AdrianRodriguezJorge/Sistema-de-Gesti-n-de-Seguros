@@ -1,4 +1,4 @@
-from data.class_participacion_reaseguro import ParticipacionReaseguro
+from models.participacion_reaseguro import ParticipacionReaseguro
 from db.conexionDB import Database
 from db.queries_base import BaseCrud 
 

@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from data.class_reclamacion import Reclamacion
-from data.class_reclamacion_rechazada import ReclamacionRechazada
+from models.reclamacion import Reclamacion
+from models.reclamacion_rechazada import ReclamacionRechazada
 from db.queries_reclamacion import CrudReclamacion
 from db.queries_reclamacion_rechazada import CrudReclamacionRechazada
 from db.queries_poliza import CrudPoliza
@@ -33,7 +33,101 @@ def pagina_reclamaciones():
     st.title('Gestión de Reclamaciones')
     st.divider()
     catalogos = _cargar_catalogos_reclamacion()
-    tab1, tab2, tab3 = st.tabs(['Listado', 'Nueva Reclamación', 'Editar Reclamación'])
+    crud_reclamacion = CrudReclamacion()
+    
+    # Check if there is an active editing session for a claim
+    edit_id = st.session_state.get('editing_reclamacion_id')
+    
+    if edit_id:
+        reclamacion_sel = crud_reclamacion.obtener(edit_id)
+        if not reclamacion_sel:
+            st.error("La reclamación seleccionada no existe.")
+            st.session_state.pop('editing_reclamacion_id', None)
+            st.session_state.editing_active = False
+            st.rerun()
+            
+        st.subheader(f'Editar Reclamación #{reclamacion_sel.id}')
+        
+        # Check if we are confirming deletion
+        confirm_del = st.session_state.get('confirming_delete_reclamacion', False)
+        
+        if confirm_del:
+            st.warning(f" Está seguro de que desea eliminar permanentemente la reclamación **#{reclamacion_sel.id}**?")
+            st.write("Esta acción es irreversible y eliminará todos los registros de rechazo asociados.")
+            col_conf1, col_conf2 = st.columns(2)
+            if col_conf1.button("Sí, eliminar permanentemente", use_container_width=True, type="primary"):
+                try:
+                    # Let's delete related rejection history if they exist
+                    from db.conexionDB import Database
+                    sql_del_rech = 'DELETE FROM reclamacion_rechazada WHERE idreclamacion = %s'
+                    with Database() as db:
+                        db.execute(sql_del_rech, (reclamacion_sel.id,))
+                    crud_reclamacion.eliminar(reclamacion_sel.id)
+                    st.success("Reclamación eliminada.")
+                    st.session_state.pop('editing_reclamacion_id', None)
+                    st.session_state.pop('confirming_delete_reclamacion', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al eliminar: {e}")
+            if col_conf2.button("No, mantener registro", use_container_width=True):
+                st.session_state.pop('confirming_delete_reclamacion', None)
+                st.rerun()
+        else:
+            with st.form('form_edit_reclamacion_focused'):
+                monto_recl = st.number_input('Monto Reclamado ($)', min_value=0.0, value=float(reclamacion_sel.montoReclamado))
+                nombres_estados = list(catalogos['er_n_id'].keys())
+                idx_estado = list(catalogos['er_id_n'].keys()).index(reclamacion_sel.idEstadoReclamacion) if reclamacion_sel.idEstadoReclamacion in catalogos['er_id_n'] else 0
+                nuevo_estado = st.selectbox('Estado', nombres_estados, index=idx_estado)
+                desc = st.text_area('Descripción del siniestro/motivo', value=reclamacion_sel.descripcion if reclamacion_sel.descripcion else '')
+                
+                motivo_rechazo = ''
+                if nuevo_estado == 'Rechazada':
+                    motivo_rechazo = st.text_area('Motivo del rechazo', placeholder='Ingrese el motivo de rechazo...')
+                
+                col_b1, col_b2, col_b3 = st.columns(3)
+                btn_upd = col_b1.form_submit_button('Actualizar Datos', use_container_width=True)
+                btn_del = col_b2.form_submit_button('Eliminar Reclamación', use_container_width=True)
+                btn_can = col_b3.form_submit_button('Cancelar', use_container_width=True)
+                
+                if btn_upd:
+                    try:
+                        pol = catalogos['pol_id_obj'].get(reclamacion_sel.idPoliza)
+                        if not pol:
+                            st.error('Póliza asociada no válida.')
+                        else:
+                            valida, msg = validar_poliza_activa(pol, st.session_state.get('rol'))
+                            if not valida:
+                                st.error(f'La póliza no está activa. {msg}')
+                            else:
+                                estado_rechazo_previo = catalogos['er_id_n'].get(reclamacion_sel.idEstadoReclamacion) == 'Rechazada'
+                                reclamacion_sel.montoReclamado = monto_recl
+                                reclamacion_sel.idEstadoReclamacion = catalogos['er_n_id'][nuevo_estado]
+                                reclamacion_sel.descripcion = desc
+                                crud_reclamacion.actualizar(reclamacion_sel)
+                                if nuevo_estado == 'Rechazada' and not estado_rechazo_previo:
+                                    rech = ReclamacionRechazada(motivo=motivo_rechazo.strip() if motivo_rechazo.strip() else None, idReclamacion=reclamacion_sel.id)
+                                    CrudReclamacionRechazada().crear(rech)
+                                st.success('Reclamación actualizada.')
+                                st.session_state.pop('editing_reclamacion_id', None)
+                                st.session_state.editing_active = False
+                                st.rerun()
+                    except Exception as e:
+                        st.error(f'Error al actualizar: {e}')
+                if btn_del:
+                    st.session_state.confirming_delete_reclamacion = True
+                    st.rerun()
+                if btn_can:
+                    st.session_state.pop('editing_reclamacion_id', None)
+                    st.session_state.editing_active = False
+                    st.rerun()
+        return
+
+    active_tab = st.session_state.pop('active_tab_reclamacion', 'Listado')
+    if active_tab == 'Nueva Reclamación':
+        tab2, tab1, tab3 = st.tabs(['Nueva Reclamación', 'Listado', 'Editar Reclamación'])
+    else:
+        tab1, tab2, tab3 = st.tabs(['Listado', 'Nueva Reclamación', 'Editar Reclamación'])
     with tab1:
         with st.spinner('Cargando reclamaciones...'):
             lista_reclamaciones = CrudReclamacion().obtener_todos()
@@ -141,7 +235,7 @@ def pagina_reclamaciones():
         with st.form('form_buscar_reclamacion'):
             st.markdown('**Buscar Reclamación para Editar**')
             col_bus1, col_bus2, col_bus3 = st.columns([2, 2, 1])
-            busqueda_id = col_bus1.text_input('Por N° de Reclamación')
+            busqueda_id = col_bus1.text_input('Por Nde Reclamación')
             busqueda_cliente = col_bus2.text_input('Por Nombre de Cliente')
             busqueda_estado = col_bus3.selectbox('Por Estado', ['Todos'] + list(catalogos['er_id_n'].values()))
             col_btn1, col_btn2 = st.columns(2)
@@ -163,7 +257,7 @@ def pagina_reclamaciones():
                 try:
                     filtros['idReclamacion'] = int(busqueda_id)
                 except ValueError:
-                    st.error('N° de Reclamación debe ser un número')
+                    st.error('Nde Reclamación debe ser un número')
                     filtros['idReclamacion'] = -1
             if busqueda_estado != 'Todos':
                 filtros['idEstadoReclamacion'] = catalogos['er_n_id'][busqueda_estado]
@@ -222,35 +316,25 @@ def pagina_reclamaciones():
                 etiqueta = f"Reclamación #{r.id} | Póliza #{r.idPoliza} | {cliente_nombre} | {catalogos['tsin_id_n'].get(r.idTipoSiniestro, '-')} | {catalogos['er_id_n'].get(r.idEstadoReclamacion, '-')}"
                 opciones_rec[etiqueta] = r
             if opciones_rec:
-                sel_rec = st.selectbox('Seleccione la reclamación a editar', list(opciones_rec.keys()))
+                sel_rec = st.selectbox('Seleccione la reclamación', list(opciones_rec.keys()))
                 reclamacion_seleccionada = opciones_rec[sel_rec]
                 st.divider()
-                st.markdown(f'**Editando Reclamación #{reclamacion_seleccionada.id}**')
-                with st.form('form_editar_rec'):
-                    col_m1, col_m2 = st.columns(2)
-                    nuevo_monto_reclamado = col_m1.number_input('Monto Reclamado ($)', value=float(reclamacion_seleccionada.montoReclamado), min_value=0.0, step=0.01)
-                    nuevo_monto_indemnizado = col_m2.number_input('Monto Indemnizado ($)', value=float(reclamacion_seleccionada.montoIndemnizado) if reclamacion_seleccionada.montoIndemnizado else 0.0, min_value=0.0, step=0.01)
-                    nombres_estados = list(catalogos['er_n_id'].keys())
-                    idx_estado_actual = nombres_estados.index(catalogos['er_id_n'].get(reclamacion_seleccionada.idEstadoReclamacion)) if reclamacion_seleccionada.idEstadoReclamacion in catalogos['er_id_n'] else 0
-                    nuevo_estado = st.selectbox('Estado de la Reclamación', nombres_estados, index=idx_estado_actual)
-                    motivo_edicion = ''
-                    if nuevo_estado == 'Rechazada':
-                        motivo_edicion = st.text_area('Motivo de rechazo', placeholder='Ingrese el motivo de rechazo...')
-                    btn_guardar_edicion = st.form_submit_button('Guardar Cambios', use_container_width=True)
-                if btn_guardar_edicion:
-                    if nuevo_estado == 'Rechazada' and (not motivo_edicion.strip()):
-                        st.error('Debe ingresar un motivo de rechazo.')
-                    else:
-                        ya_rechazada = catalogos['er_id_n'].get(reclamacion_seleccionada.idEstadoReclamacion) == 'Rechazada'
-                        reclamacion_seleccionada.montoReclamado = nuevo_monto_reclamado
-                        reclamacion_seleccionada.montoIndemnizado = nuevo_monto_indemnizado
-                        reclamacion_seleccionada.idEstadoReclamacion = catalogos['er_n_id'][nuevo_estado]
-                        CrudReclamacion().actualizar(reclamacion_seleccionada)
-                        if nuevo_estado == 'Rechazada' and (not ya_rechazada):
-                            reclamacion_rechazada = ReclamacionRechazada(motivo=motivo_edicion.strip(), idReclamacion=reclamacion_seleccionada.id)
-                            CrudReclamacionRechazada().crear(reclamacion_rechazada)
-                        st.success('Reclamación actualizada correctamente.')
-                        st.rerun()
+                
+                # Show read-only details of the selected claim
+                st.markdown(f"### Detalles de la Reclamación Seleccionada")
+                cl_d1, cl_d2 = st.columns(2)
+                cl_d1.markdown(f"**Número de Reclamación:** #{reclamacion_seleccionada.id}")
+                cl_d1.markdown(f"**Póliza Asociada:** #{reclamacion_seleccionada.idPoliza}")
+                cl_d1.markdown(f"**Tipo Siniestro:** {catalogos['tsin_id_n'].get(reclamacion_seleccionada.idTipoSiniestro, 'N/A')}")
+                cl_d2.markdown(f"**Fecha Siniestro:** {reclamacion_seleccionada.fechaSiniestro}")
+                cl_d2.markdown(f"**Monto Reclamado:** ${reclamacion_seleccionada.montoReclamado:,.2f}")
+                cl_d2.markdown(f"**Monto Indemnizado:** ${reclamacion_seleccionada.montoIndemnizado:,.2f}" if reclamacion_seleccionada.montoIndemnizado else "**Monto Indemnizado:** $0.00")
+                cl_d2.markdown(f"**Estado Actual:** {catalogos['er_id_n'].get(reclamacion_seleccionada.idEstadoReclamacion, 'N/A')}")
+                
+                if st.button(" Iniciar Edición / Eliminación", use_container_width=True, type="primary"):
+                    st.session_state.editing_reclamacion_id = reclamacion_seleccionada.id
+                    st.session_state.editing_active = True
+                    st.rerun()
             else:
                 st.info('No hay resultados con datos completos en esta página.')
         else:

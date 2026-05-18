@@ -1,4 +1,4 @@
-from data.class_reclamacion import Reclamacion
+from models.reclamacion import Reclamacion
 from db.conexionDB import Database
 from db.queries_base import BaseCrud
   
@@ -74,3 +74,28 @@ class CrudReclamacion(BaseCrud):
         params = (o.idTipoSiniestro, o.fechaSiniestro, o.montoReclamado, o.idEstadoReclamacion, o.montoIndemnizado, o.idPoliza, o.id)
         with Database() as db: 
             db.execute(sql, params)
+
+    def eliminar(self, id_reclamacion):
+        with Database() as db:
+            db.execute("DELETE FROM reclamacion_rechazada WHERE idreclamacion = %s", (id_reclamacion,))
+            db.execute("DELETE FROM reclamacion WHERE idreclamacion = %s", (id_reclamacion,))
+
+
+# Funciones de compatibilidad para la interfaz UI
+def listar_reclamaciones():
+    sql = """
+        SELECT c.nombre || ' ' || c.apellidos as cliente,
+               r.idpoliza, ts.nombre as tipo_seguro, r.idreclamacion,
+               tsi.nombre as tipo_siniestro, r.fechasiniestro,
+               r.montoreclamado, r.montoindemnizado, er.nombre as estado
+        FROM reclamacion r
+        JOIN poliza p ON r.idpoliza = p.idpoliza
+        JOIN cliente c ON p.idcliente = c.idcliente
+        JOIN tipo_seguro ts ON p.idtiposeguro = ts.idtiposeguro
+        JOIN tipo_siniestro tsi ON r.idtiposiniestro = tsi.idtiposiniestro
+        JOIN estado_reclamacion er ON r.idestadoreclamacion = er.idestadoreclamacion
+        ORDER BY r.fechasiniestro DESC
+    """
+    with Database() as db:
+        return db.fetch_all(sql)
+

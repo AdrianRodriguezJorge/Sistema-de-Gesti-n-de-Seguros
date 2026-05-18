@@ -1,4 +1,4 @@
-from data.class_pago import Pago
+from models.pago import Pago
 from db.crud_generico import CrudGenerico
 from db.conexionDB import Database
 
@@ -51,3 +51,16 @@ class CrudPago(CrudGenerico):
             params.append(año)
         with Database() as db:
             return db.fetch_one(sql, tuple(params))["total_anual"]
+
+# Funciones de compatibilidad para la interfaz UI
+def total_pagado_por_cliente(id_cliente):
+    sql = """
+        SELECT COALESCE(SUM(p.monto_pagado), 0) as total
+        FROM pago p
+        JOIN poliza po ON p.idpoliza = po.idpoliza
+        WHERE po.idcliente = %s
+    """
+    with Database() as db:
+        res = db.fetch_one(sql, (id_cliente,))
+        return float(res["total"]) if res else 0.0
+

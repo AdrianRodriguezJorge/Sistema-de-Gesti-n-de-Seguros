@@ -1,467 +1,1448 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-from db.queries_pago import CrudPago
-from db.queries_agencia import CrudAgencia
-from db.queries_cliente import CrudCliente
-from db.queries_poliza import CrudPoliza
-from db.queries_reclamacion import CrudReclamacion
-from db.queries_reaseguradora import CrudReaseguradora
-from db.queries_catalogos import CrudPais, CrudTipoSeguro, CrudTipoSiniestro, CrudTipoReaseguro, CrudEstadoPoliza, CrudEstadoReclamacion
-from db.queries_reporte_generado import CrudReporteGenerado
+from datetime import datetime, date
 import json
+from db.conexionDB import Database
+from db.queries_catalogos import listar_paises, listar_tipos_seguro, listar_estados_reclamacion
+from db.queries_cliente import listar_clientes, obtener_cliente_por_id
+from db.queries_poliza import listar_polizas, obtener_poliza_por_id
+from db.queries_reaseguradora import obtener_reaseguradora_por_id
+from db.queries_reclamacion import listar_reclamaciones
+from db.queries_pago import total_pagado_por_cliente
+from db.queries_agencia import obtener_agencia
+from db.queries_reporte_generado import CrudReporteGenerado
 from utils.generador_pdf import GeneradorPDF
 
-def _mostrar_reportes_guardados(nombre_prefix):
-    crud = CrudReporteGenerado()
-    reportes = [r for r in crud.obtener_todos() if r['nombre_reporte'].startswith(nombre_prefix)]
-    if reportes:
-        st.divider()
-        st.subheader('Reportes Guardados')
-        for rep in reportes:
-            col1, col2, col3 = st.columns([3, 1, 1])
-            with col1:
-                st.text(f"{rep['nombre_reporte']} - {rep['fecha_creacion'].strftime('%d/%m/%Y')}")
-            with col2:
-                if st.button('Ver', key=f"view_{rep['id_reporte']}", use_container_width=True):
-                    st.session_state[f'rep_view_{nombre_prefix}'] = rep['id_reporte']
-                    st.rerun()
-            with col3:
-                if st.button('Eliminar', key=f"del_{rep['id_reporte']}", use_container_width=True):
-                    crud.eliminar(rep['id_reporte'])
-                    if st.session_state.get(f'rep_view_{nombre_prefix}') == rep['id_reporte']:
-                        del st.session_state[f'rep_view_{nombre_prefix}']
-                    st.success('Reporte eliminado.')
-                    st.rerun()
-        
-        rep_id = st.session_state.get(f'rep_view_{nombre_prefix}')
-        if rep_id:
-            rep = crud.obtener(rep_id)
-            if rep:
-                st.divider()
-                st.subheader(f"Visualizando: {rep['nombre_reporte']}")
-                datos = rep['datos_reporte'] if isinstance(rep['datos_reporte'], dict) else json.loads(rep['datos_reporte'])
-                
-                # Botón de Descarga PDF
-                try:
-                    pdf_bytes = GeneradorPDF.generar(rep['nombre_reporte'], datos)
-                    st.download_button(
-                        label="📥 Descargar Reporte en PDF",
-                        data=pdf_bytes,
-                        file_name=f"{rep['nombre_reporte'].replace(' ', '_')}.pdf",
-                        mime="application/pdf",
-                        key=f"download_pdf_{rep['id_reporte']}",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Error al generar el PDF: {e}")
-                st.divider()
-                
-                if 'Ingresos Mensuales' in rep['nombre_reporte']:
-                    st.metric('Ingreso Total Anual', f"${datos.get('total_anual', 0):,.2f}")
-                    if datos.get('ingresos'):
-                        filas = [{'Mes': i['mes'], 'Ingreso Mensual': f"${i['ingreso']:,.2f}"} for i in datos['ingresos']]
-                        st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
-                
-                elif 'Ficha Agencia' in rep['nombre_reporte']:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown('**Datos de la Agencia**')
-                        st.text(f'Nombre: {datos.get("nombre", "")}')
-                        st.text(f'Dirección Postal: {datos.get("direccion", "")}')
-                        st.text(f'Teléfono: {datos.get("telefono", "")}')
-                        st.text(f'Email: {datos.get("email", "")}')
-                    with col2:
-                        st.markdown('**Directivos**')
-                        st.text(f'Director General: {datos.get("director_general", "")}')
-                        st.text(f'Jefe de Seguros: {datos.get("jefe_seguros", "")}')
-                        st.text(f'Jefe de Reclamaciones: {datos.get("jefe_reclamaciones", "")}')
-                
-                elif 'Ficha Cliente' in rep['nombre_reporte']:
-                    cli = datos.get('cliente', {})
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown('**Información del Cliente**')
-                        st.text(f'Nombre: {cli.get("nombre", "")} {cli.get("apellidos", "")}')
-                        st.text(f'No. Identificación: {cli.get("identificacion", "")}')
-                        st.text(f'Teléfono: {cli.get("telefono", "")}')
-                        st.text(f'Email: {cli.get("correo", "")}')
-                        st.text(f'País: {cli.get("pais", "")}')
-                    with col2:
-                        st.markdown('**Resumen de Pólizas**')
-                        st.metric('Pólizas Activas', datos.get('polizas_activas', 0))
-                        st.metric('Valor Total Primas Pagadas', f"${datos.get('total_primas', 0):,.2f}")
-                    st.metric('Total Reclamaciones', datos.get('reclamaciones', 0))
-                
-                elif 'Ficha Reaseguradora' in rep['nombre_reporte']:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown('**Datos de la Reaseguradora**')
-                        st.text(f'Nombre: {datos.get("nombre", "")}')
-                        st.text(f"País de Origen: {datos.get('pais', '')}")
-                        st.text(f"Tipo de Reaseguro: {datos.get('tipo_reaseguro', '')}")
-                    with col2:
-                        st.markdown('**Participación en Tipos de Seguro**')
-                        for part in datos.get('participaciones', []):
-                            st.text(f"{part.get('tipo_seguro', 'N/A')}: {part.get('porcentaje', 0)}%")
-                
-                elif 'Pólizas por Período' in rep['nombre_reporte']:
-                    st.caption(f"Período: {datos.get('fecha_inicio', '')} al {datos.get('fecha_fin', '')}")
-                    if datos.get('polizas'):
-                        filas = [{'No. Póliza': p['id'], 'Cliente': p.get('cliente', 'N/A'), 'Tipo Seguro': p.get('tipo_seguro', 'N/A'), 'Fecha Inicio': p.get('fecha_inicio', 'N/A'), 'Fecha Fin': p.get('fecha_fin', 'N/A'), 'Prima Mensual': f"${p.get('prima', 0):,.2f}", 'Estado': p.get('estado', 'N/A')} for p in datos['polizas']]
-                        st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
-                        st.caption(f'Total de pólizas: {len(datos["polizas"])}')
-                
-                elif 'Estado Reclamaciones' in rep['nombre_reporte']:
-                    st.caption(f"Período: {datos.get('fecha_inicio', '')} al {datos.get('fecha_fin', '')}")
-                    if datos.get('reclamaciones'):
-                        filas = [{'No. Reclamación': r['id'], 'Cliente': r.get('cliente', 'N/A'), 'Monto Reclamado': f"${r.get('monto_reclamado', 0):,.2f}", 'Monto Indemnizado': f"${r.get('monto_indemnizado', 0):,.2f}", 'Estado': r.get('estado', 'N/A')} for r in datos['reclamaciones']]
-                        st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
-                        st.caption(f'Total de reclamaciones: {len(datos["reclamaciones"])}')
-                
-                if st.button('Cerrar Reporte', key=f'close_{rep["id_reporte"]}', use_container_width=True):
-                    del st.session_state[f'rep_view_{nombre_prefix}']
-                    st.rerun()
+def _renderizar_reporte_detalle(nombre_reporte, datos):
+    """
+    Renderiza de forma visual y premium los datos de cualquiera de los 17 reportes guardados históricamente.
+    """
+    tipo = datos.get('tipo_reporte', '')
+    
+    # 1. LISTADO DE CLIENTES
+    if tipo == 'Listado de Clientes':
+        st.info("Visualizando Listado de Clientes agrupado por país de origen.")
+        paises_datos = datos.get('paises_datos', [])
+        for p in paises_datos:
+            st.markdown(f"### {p['pais']}")
+            if p['clientes']:
+                df = pd.DataFrame(p['clientes'])
+                df_display = df.rename(columns={
+                    "idcliente": "ID",
+                    "nombre": "Nombre",
+                    "apellidos": "Apellidos",
+                    "polizas_activas": "Pólizas activas",
+                    "total_pagado": "Total pagado ($)"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No hay clientes registrados en este país.")
 
-def pagina_reportes():
-    st.title('Reportes')
-    st.divider()
-    crud_reportes = CrudReporteGenerado()
-    
-    if 'rep_view_Ingresos Mensuales' not in st.session_state:
-        st.session_state['rep_view_Ingresos Mensuales'] = None
-    if 'rep_view_Ficha Agencia' not in st.session_state:
-        st.session_state['rep_view_Ficha Agencia'] = None
-    if 'rep_view_Ficha Cliente' not in st.session_state:
-        st.session_state['rep_view_Ficha Cliente'] = None
-    if 'rep_view_Ficha Reaseguradora' not in st.session_state:
-        st.session_state['rep_view_Ficha Reaseguradora'] = None
-    if 'rep_view_Pólizas por Período' not in st.session_state:
-        st.session_state['rep_view_Pólizas por Período'] = None
-    if 'rep_view_Estado Reclamaciones' not in st.session_state:
-        st.session_state['rep_view_Estado Reclamaciones'] = None
-    
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        'Ingresos Mensuales', 'Ficha Agencia', 'Ficha Cliente', 
-        'Ficha Reaseguradora', 'Pólizas por Período', 'Estado Reclamaciones'
-    ])
-    
-    with tab1:
-        st.subheader('Listado de Ingresos Mensuales')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        año_actual = datetime.now().year
-        año = st.selectbox('Seleccione el año', [año_actual, año_actual - 1, año_actual - 2])
-        
-        crud_pago = CrudPago()
-        with st.spinner('Cargando ingresos...'):
-            ingresos = crud_pago.obtener_ingresos_mensuales(año)
-            total_anual = crud_pago.obtener_total_anual(año)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric('Ingreso Total Anual', f'${total_anual:,.2f}' if total_anual else '$0.00')
-        with col2:
-            st.metric('Total Meses con Ingresos', len(ingresos))
-        with col3:
-            promedio = sum((i['ingreso_mensual'] for i in ingresos)) / len(ingresos) if ingresos else 0
-            st.metric('Promedio Mensual', f'${promedio:,.2f}')
-        
-        st.divider()
+    # 2. LISTADO DE PÓLIZAS
+    elif tipo == 'Listado de Pólizas':
+        st.info("Visualizando Listado de Pólizas agrupado por tipo de seguro.")
+        tipos_datos = datos.get('tipos_datos', [])
+        for t in tipos_datos:
+            st.markdown(f"###  {t['tipo']}")
+            if t['polizas']:
+                df = pd.DataFrame(t['polizas'])
+                df_display = df.rename(columns={
+                    "idpoliza": "Número",
+                    "cliente": "Cliente",
+                    "fechainicio": "Fecha inicio",
+                    "fechafin": "Fecha fin",
+                    "primamensual": "Prima mensual",
+                    "montoasegurado": "Monto asegurado",
+                    "estado": "Estado"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No hay pólizas registradas para este tipo.")
+
+    # 3. LISTADO DE RECLAMACIONES
+    elif tipo == 'Listado de Reclamaciones':
+        st.info("Visualizando Listado de Reclamaciones registradas.")
+        reclamaciones = datos.get('reclamaciones', [])
+        if reclamaciones:
+            df = pd.DataFrame(reclamaciones)
+            df_display = df.rename(columns={
+                "cliente": "Cliente",
+                "idpoliza": "Número de póliza",
+                "tipo_seguro": "Tipo de seguro",
+                "idreclamacion": "Número de reclamación",
+                "tipo_siniestro": "Tipo de siniestro",
+                "fechasiniestro": "Fecha del siniestro",
+                "montoreclamado": "Monto reclamado",
+                "montoindemnizado": "Monto indemnizado",
+                "estado": "Estado"
+            })
+            st.dataframe(df_display[[
+                "Cliente", "Número de póliza", "Tipo de seguro", "Número de reclamación",
+                "Tipo de siniestro", "Fecha del siniestro", "Monto reclamado", "Monto indemnizado", "Estado"
+            ]], use_container_width=True, hide_index=True)
+        else:
+            st.caption("No hay reclamaciones registradas.")
+
+    # 4. LISTADO DE REASEGURADORAS
+    elif tipo == 'Listado de Reaseguradoras':
+        st.info("Visualizando Listado de Reaseguradoras.")
+        reaseguradoras = datos.get('reaseguradoras', [])
+        if reaseguradoras:
+            for rea in reaseguradoras:
+                with st.expander(f"{rea['nombre']} ({rea['idreaseguradora']})"):
+                    st.markdown(f"**País de origen:** {rea['pais']}")
+                    st.markdown(f"**Tipo de reaseguro:** {rea['tipo_reaseguro']}")
+                    st.markdown("**Participaciones:**")
+                    if rea['participaciones']:
+                        df = pd.DataFrame(rea['participaciones'])
+                        df_display = df.rename(columns={
+                            "tipo_seguro": "Tipo de seguro",
+                            "porcentaje": "Porcentaje (%)"
+                        })
+                        st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Esta reaseguradora no posee participaciones.")
+        else:
+            st.caption("No hay reaseguradoras registradas.")
+
+    # 5. LISTADO DE PÓLIZAS VENCIDAS
+    elif tipo == 'Listado de Pólizas Vencidas':
+        st.info("Visualizando Listado de Pólizas Vencidas históricamente.")
+        polizas = datos.get('polizas', [])
+        if polizas:
+            df = pd.DataFrame(polizas)
+            df_display = df.rename(columns={
+                "idpoliza": "Número de póliza",
+                "cliente": "Cliente",
+                "tipo_seguro": "Tipo de seguro",
+                "fechainicio": "Fecha inicio",
+                "fechafin": "Fecha fin",
+                "montoasegurado": "Monto asegurado"
+            })
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.success("No se encontraron pólizas vencidas en este reporte.")
+
+    # 6. LISTADO DE CLIENTES CON PÓLIZAS CANCELADAS
+    elif tipo == 'Listado de Clientes con Pólizas Canceladas':
+        st.info("Visualizando Clientes con Pólizas Canceladas.")
+        clientes = datos.get('clientes', [])
+        if clientes:
+            df = pd.DataFrame(clientes)
+            df_display = df.rename(columns={
+                "idcliente": "ID",
+                "nombre": "Nombre",
+                "apellidos": "Apellidos",
+                "cantidad_canceladas": "Pólizas canceladas",
+                "motivos": "Motivo(s) de cancelación"
+            })
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No hay clientes con pólizas canceladas.")
+
+    # 7. RESUMEN DE PÓLIZAS POR TIPO DE SEGURO
+    elif tipo == 'Resumen de Pólizas por Tipo de Seguro':
+        st.info("Visualizando Resumen de Pólizas Activas por Tipo de Seguro.")
+        resumen = datos.get('resumen', [])
+        if resumen:
+            df = pd.DataFrame(resumen)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # 8. RESUMEN DE RECLAMACIONES POR ESTADO
+    elif tipo == 'Resumen de Reclamaciones por Estado':
+        st.info("Visualizando Resumen de Reclamaciones por Estado.")
+        resumen = datos.get('resumen', [])
+        if resumen:
+            df = pd.DataFrame(resumen)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # 9. INGRESOS MENSUALES / INGRESOS POR PRIMAS
+    elif tipo == 'Ingresos Mensuales':
+        st.metric('Ingreso Total Anual', f"${datos.get('total_anual', 0):,.2f}")
+        ingresos = datos.get('ingresos', [])
         if ingresos:
-            st.subheader('Desglose Mensual')
-            filas = [{'Mes': i['nombre_mes'].strip(), 'Ingreso Mensual': f"${i['ingreso_mensual']:,.2f}"} for i in ingresos]
+            filas = [{'Mes': i['mes'], 'Ingreso Mensual': f"${i['ingreso']:,.2f}"} for i in ingresos]
             st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
             
-            if st.checkbox('Mostrar gráfico de ingresos'):
-                df = pd.DataFrame(filas)
-                df['Ingreso Numerico'] = df['Ingreso Mensual'].str.replace('$', '').str.replace(',', '').astype(float)
-                st.bar_chart(df.set_index('Mes')['Ingreso Numerico'])
-            
-            if st.button('Generar Reporte', key='gen_ingresos', use_container_width=True):
-                datos = {
-                    'año': año,
-                    'total_anual': float(total_anual) if total_anual else 0,
-                    'ingresos': [{'mes': i['nombre_mes'].strip(), 'ingreso': float(i['ingreso_mensual'])} for i in ingresos]
-                }
-                crud_reportes.crear(f'Ingresos Mensuales {año}', datos)
-                st.success('Reporte guardado con la fecha de hoy.')
-                st.rerun()
+            # Recrear gráfico de ingresos en el historial
+            df_chart = pd.DataFrame(filas)
+            df_chart['Ingreso'] = df_chart['Ingreso Mensual'].str.replace('$', '').str.replace(',', '').astype(float)
+            st.bar_chart(df_chart.set_index('Mes')['Ingreso'])
+
+    # 10. CLIENTES CON RECLAMACIONES APROBADAS
+    elif tipo == 'Reporte de Clientes con Reclamaciones Aprobadas':
+        st.info("Visualizando Clientes con Reclamaciones Aprobadas.")
+        clientes = datos.get('clientes', [])
+        if clientes:
+            df = pd.DataFrame(clientes)
+            df_display = df.rename(columns={
+                "idcliente": "ID",
+                "nombre": "Nombre",
+                "apellidos": "Apellidos",
+                "cantidad_aprobadas": "Reclamaciones aprobadas",
+                "total_indemnizado": "Total indemnizado ($)"
+            })
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
-            st.info(f'No hay ingresos registrados para el año {año}.')
-        _mostrar_reportes_guardados('Ingresos Mensuales')
-    
-    with tab2:
-        st.subheader('Ficha de la Agencia de Seguros')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        crud_agencia = CrudAgencia()
-        agencias = crud_agencia.obtener_todos()
+            st.caption("No hay clientes con reclamaciones aprobadas.")
+
+    # 11. CLIENTES CON RECLAMACIONES RECHAZADAS
+    elif tipo == 'Reporte de Clientes con Reclamaciones Rechazadas':
+        st.info("Visualizando Clientes con Reclamaciones Rechazadas.")
+        clientes = datos.get('clientes', [])
+        if clientes:
+            df = pd.DataFrame(clientes)
+            df_display = df.rename(columns={
+                "idcliente": "ID",
+                "nombre": "Nombre",
+                "apellidos": "Apellidos",
+                "cantidad_rechazadas": "Reclamaciones rechazadas",
+                "motivos": "Motivo(s) del rechazo"
+            })
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No hay clientes con reclamaciones rechazadas.")
+
+    # 12. FICHA DE LA AGENCIA
+    elif tipo == 'Ficha de la Agencia de Seguros':
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('**Datos de la Agencia**')
+            st.text(f'Nombre: {datos.get("nombre", "")}')
+            st.text(f'Dirección Postal: {datos.get("direccion", "")}')
+            st.text(f'Teléfono: {datos.get("telefono", "")}')
+            st.text(f'Email: {datos.get("email", "")}')
+        with col2:
+            st.markdown('**Directivos**')
+            st.text(f'Director General: {datos.get("director_general", "")}')
+            st.text(f'Jefe de Seguros: {datos.get("jefe_seguros", "")}')
+            st.text(f'Jefe de Reclamaciones: {datos.get("jefe_reclamaciones", "")}')
+
+    # 13. FICHA DE CLIENTE DETERMINADO
+    elif tipo == 'Ficha de un Cliente Determinado':
+        cli = datos.get('cliente', {})
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('**Información del Cliente**')
+            st.text(f'Nombre: {cli.get("nombre", "")} {cli.get("apellidos", "")}')
+            st.text(f'No. Identificación: {cli.get("identificacion", "")}')
+            st.text(f'Teléfono: {cli.get("telefono", "")}')
+            st.text(f'Email: {cli.get("correo", "")}')
+            st.text(f'País: {cli.get("pais", "")}')
+        with col2:
+            st.markdown('**Resumen de Pólizas**')
+            st.metric('Pólizas Activas', datos.get('polizas_activas', 0))
+            st.metric('Valor Total Primas Pagadas', f"${datos.get('total_primas', 0):,.2f}")
         
-        if not agencias:
-            st.warning('No hay agencia registrada.')
+        reclamaciones_list = datos.get('reclamaciones_list', [])
+        if reclamaciones_list:
+            st.divider()
+            st.markdown('**Listado de Reclamaciones**')
+            df = pd.DataFrame(reclamaciones_list)
+            st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            agencia = agencias[0]
+            st.info("El cliente no tiene reclamaciones registradas.")
+
+    # 14. FICHA DE REASEGURADORA ASOCIADA
+    elif tipo == 'Ficha de una Reaseguradora Asociada':
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('**Datos de la Reaseguradora**')
+            st.text(f'Nombre: {datos.get("nombre", "")}')
+            st.text(f"País de Origen: {datos.get('pais', '')}")
+        with col2:
+            st.markdown('**Contacto y Tipo**')
+            st.text(f"Tipo de Reaseguro: {datos.get('tipo_reaseguro', '')}")
+            st.text(f"Email: {datos.get('email', 'No registrado')}")
+        
+        st.divider()
+        st.markdown('**Participación en Ramos de Seguro**')
+        participaciones = datos.get('participaciones', [])
+        if participaciones:
+            df = pd.DataFrame(participaciones)
+            df_display = df.rename(columns={
+                "tipo_seguro": "Tipo de seguro",
+                "porcentaje": "Porcentaje (%)"
+            })
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("No tiene participaciones de reaseguro registradas.")
+
+    # 15. REPORTE DE PÓLIZAS EMITIDAS EN PERÍODO
+    elif tipo == 'Reporte de Pólizas Emitidas en un Período':
+        st.caption(f"Período: {datos.get('fecha_inicio', '')} al {datos.get('fecha_fin', '')}")
+        polizas = datos.get('polizas', [])
+        if polizas:
+            filas = [{
+                'No. Póliza': p.get('id'), 
+                'Cliente': p.get('cliente', 'N/A'), 
+                'Tipo Seguro': p.get('tipo_seguro', 'N/A'), 
+                'Fecha Inicio': p.get('fecha_inicio', 'N/A'), 
+                'Fecha Fin': p.get('fecha_fin', 'N/A'), 
+                'Prima Mensual': f"${p.get('prima', 0):,.2f}", 
+                'Estado': p.get('estado', 'N/A')
+            } for p in polizas]
+            st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
+            st.caption(f'Total de pólizas: {len(polizas)}')
+        else:
+            st.info("No hay pólizas registradas en este período.")
+
+    # 16. REPORTE DE ESTADO DE RECLAMACIONES
+    elif tipo == 'Reporte de Estado de las Reclamaciones':
+        st.caption(f"Período: {datos.get('fecha_inicio', '')} al {datos.get('fecha_fin', '')}")
+        reclamaciones = datos.get('reclamaciones', [])
+        if reclamaciones:
+            filas = [{
+                'No. Reclamación': r.get('id'), 
+                'Cliente': r.get('cliente', 'N/A'), 
+                'Monto Reclamado': f"${r.get('monto_reclamado', 0):,.2f}", 
+                'Monto Indemnizado': f"${r.get('monto_indemnizado', 0):,.2f}", 
+                'Estado': r.get('estado', 'N/A')
+            } for r in reclamaciones]
+            st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
+            st.caption(f'Total de reclamaciones: {len(reclamaciones)}')
+        else:
+            st.info("No hay reclamaciones registradas en este período.")
+
+def _mostrar_reportes_guardados_centralizado():
+    """
+    Muestra en una sola interfaz todos los reportes historizados persistidos en la base de datos,
+    permitiendo verlos (con renderizado de alta fidelidad), descargarlos en PDF o eliminarlos.
+    """
+    crud = CrudReporteGenerado()
+    reportes = crud.obtener_todos()
+    
+    if not reportes:
+        st.info("No hay reportes guardados en el historial actualmente.")
+        return
+        
+    st.caption("Seleccione un reporte de la lista para cargarlo y visualizar su información histórica o guardarla en PDF.")
+    
+    # Selector de Reportes Guardados
+    opciones_reporte = {r['id_reporte']: f"{r['nombre_reporte']} ({r['fecha_creacion'].strftime('%d/%m/%Y %H:%M')})" for r in reportes}
+    
+    col_sel, col_btn_del = st.columns([4, 1])
+    with col_sel:
+        rep_id_seleccionado = st.selectbox("Seleccione un reporte del histórico:", options=list(opciones_reporte.keys()), format_func=lambda x: opciones_reporte[x], label_visibility="collapsed")
+    with col_btn_del:
+        if st.button(" Eliminar", use_container_width=True):
+            crud.eliminar(rep_id_seleccionado)
+            st.success("Reporte eliminado de la base de datos.")
+            st.rerun()
+            
+    if rep_id_seleccionado:
+        rep = crud.obtener(rep_id_seleccionado)
+        if rep:
+            st.divider()
+            st.subheader(f"Visualizando: {rep['nombre_reporte']}")
+            st.caption(f"Generado el: {rep['fecha_creacion'].strftime('%d/%m/%Y a las %H:%M')}")
+            
+            datos = rep['datos_reporte'] if isinstance(rep['datos_reporte'], dict) else json.loads(rep['datos_reporte'])
+            
+            # Botón de Descarga PDF
+            try:
+                pdf_bytes = GeneradorPDF.generar(rep['nombre_reporte'], datos)
+                st.download_button(
+                    label="Descargar Reporte en PDF",
+                    data=pdf_bytes,
+                    file_name=f"{rep['nombre_reporte'].replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_pdf_hist_{rep['id_reporte']}",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"Error al generar el PDF: {e}")
+            
+            st.divider()
+            
+            # Renderizado específico del detalle del reporte
+            _renderizar_reporte_detalle(rep['nombre_reporte'], datos)
+
+def pagina_reportes():
+    st.title("Reportes y Salidas del Sistema")
+    st.caption("Generación de reportes generales, resúmenes estadísticos, fichas de agencia y consultas temporales parametrizadas.")
+    st.divider()
+    
+    crud_reportes = CrudReporteGenerado()
+    
+    # 5 Categorías principales descritas en el Plan de Diseño Fiel al PDF
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 Listados Generales",
+        "📈 Resúmenes y Estadísticas",
+        "👤 Fichas Especiales",
+        "📅 Reportes Paramétricos",
+        "📜 Historial Guardado"
+    ])
+    
+    # =========================================================================
+    # TAB 1: LISTADOS GENERALES
+    # =========================================================================
+    with tab1:
+        st.subheader("Listados Generales de la Base de Datos")
+        reporte_listados = st.selectbox(
+            "Seleccione el listado general a consultar:",
+            options=[
+                "Listado de Clientes",
+                "Listado de Pólizas",
+                "Listado de Reclamaciones",
+                "Listado de Reaseguradoras",
+                "Listado de Pólizas Vencidas",
+                "Listado de Clientes con Pólizas Canceladas"
+            ],
+            key="sb_listados"
+        )
+        st.divider()
+        
+        # 1. LISTADO DE CLIENTES
+        if reporte_listados == "Listado de Clientes":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            paises = listar_paises()
+            
+            paises_datos_json = []
+            for pais in paises:
+                st.markdown(f"### {pais['nombre']}")
+                with Database() as db:
+                    clientes = db.fetch_all(
+                        """
+                        SELECT c.idcliente, c.nombre, c.apellidos,
+                               COUNT(CASE WHEN ep.nombre = 'Activa' THEN 1 END) as polizas_activas,
+                               COALESCE(SUM(p.monto_pagado), 0) as total_pagado
+                        FROM cliente c
+                        LEFT JOIN poliza po ON c.idcliente = po.idcliente
+                        LEFT JOIN estado_poliza ep ON po.idestadopoliza = ep.idestadopoliza
+                        LEFT JOIN pago p ON po.idpoliza = p.idpoliza
+                        WHERE c.idpais = %s
+                        GROUP BY c.idcliente, c.nombre, c.apellidos
+                        ORDER BY c.apellidos;
+                        """,
+                        (pais["idpais"],)
+                    )
+                
+                clientes_list = []
+                if clientes:
+                    df = pd.DataFrame(clientes)
+                    df_display = df.rename(columns={
+                        "idcliente": "ID",
+                        "nombre": "Nombre",
+                        "apellidos": "Apellidos",
+                        "polizas_activas": "Pólizas activas",
+                        "total_pagado": "Total pagado ($)"
+                    })
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    
+                    # Convertir para JSON de persistencia
+                    for cli in clientes:
+                        clientes_list.append({
+                            "idcliente": cli["idcliente"],
+                            "nombre": cli["nombre"],
+                            "apellidos": cli["apellidos"],
+                            "polizas_activas": int(cli["polizas_activas"]),
+                            "total_pagado": float(cli["total_pagado"])
+                        })
+                else:
+                    st.info(f"No hay clientes registrados en {pais['nombre']}.")
+                
+                paises_datos_json.append({
+                    "pais": pais["nombre"],
+                    "clientes": clientes_list
+                })
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_cli", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Clientes",
+                    "paises_datos": paises_datos_json
+                }
+                crud_reportes.crear("Listado de Clientes", datos)
+                st.success("Reporte de Listado de Clientes guardado con éxito en el historial.")
+                st.rerun()
+
+        # 2. LISTADO DE PÓLIZAS
+        elif reporte_listados == "Listado de Pólizas":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            tipos_seguro = listar_tipos_seguro()
+            
+            tipos_datos_json = []
+            for tipo in tipos_seguro:
+                st.markdown(f"###  {tipo['nombre']}")
+                with Database() as db:
+                    polizas = db.fetch_all(
+                        """
+                        SELECT p.idpoliza, c.nombre || ' ' || c.apellidos as cliente,
+                               p.fecha_inicio as fechainicio, p.fecha_fin as fechafin, p.prima_mensual as primamensual,
+                               p.monto_asegurado as montoasegurado, ep.nombre as estado
+                        FROM poliza p
+                        JOIN cliente c ON p.idcliente = c.idcliente
+                        JOIN estado_poliza ep ON p.idestadopoliza = ep.idestadopoliza
+                        WHERE p.idtiposeguro = %s
+                        ORDER BY p.idpoliza;
+                        """,
+                        (tipo["idtiposeguro"],)
+                    )
+                
+                polizas_list = []
+                if polizas:
+                    df = pd.DataFrame(polizas)
+                    df_display = df.rename(columns={
+                        "idpoliza": "Número",
+                        "cliente": "Cliente",
+                        "fechainicio": "Fecha inicio",
+                        "fechafin": "Fecha fin",
+                        "primamensual": "Prima mensual",
+                        "montoasegurado": "Monto asegurado",
+                        "estado": "Estado"
+                    })
+                    st.dataframe(df_display, use_container_width=True, hide_index=True)
+                    
+                    for p in polizas:
+                        polizas_list.append({
+                            "idpoliza": p["idpoliza"],
+                            "cliente": p["cliente"],
+                            "fechainicio": p["fechainicio"].strftime('%Y-%m-%d'),
+                            "fechafin": p["fechafin"].strftime('%Y-%m-%d'),
+                            "primamensual": float(p["primamensual"]),
+                            "montoasegurado": float(p["montoasegurado"]),
+                            "estado": p["estado"]
+                        })
+                else:
+                    st.info(f"No hay pólizas registradas para {tipo['nombre']}.")
+                    
+                tipos_datos_json.append({
+                    "tipo": tipo["nombre"],
+                    "polizas": polizas_list
+                })
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_pol", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Pólizas",
+                    "tipos_datos": tipos_datos_json
+                }
+                crud_reportes.crear("Listado de Pólizas", datos)
+                st.success("Reporte de Listado de Pólizas guardado con éxito en el historial.")
+                st.rerun()
+
+        # 3. LISTADO DE RECLAMACIONES
+        elif reporte_listados == "Listado de Reclamaciones":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            reclamaciones = listar_reclamaciones()
+            
+            reclamaciones_json = []
+            if reclamaciones:
+                df = pd.DataFrame(reclamaciones)
+                df_display = df.rename(columns={
+                    "cliente": "Cliente",
+                    "idpoliza": "Número de póliza",
+                    "tipo_seguro": "Tipo de seguro",
+                    "idreclamacion": "Número de reclamación",
+                    "tipo_siniestro": "Tipo de siniestro",
+                    "fechasiniestro": "Fecha del siniestro",
+                    "montoreclamado": "Monto reclamado",
+                    "montoindemnizado": "Monto indemnizado",
+                    "estado": "Estado"
+                })
+                st.dataframe(df_display[[
+                    "Cliente", "Número de póliza", "Tipo de seguro", "Número de reclamación",
+                    "Tipo de siniestro", "Fecha del siniestro", "Monto reclamado", "Monto indemnizado", "Estado"
+                ]], use_container_width=True, hide_index=True)
+                
+                for r in reclamaciones:
+                    reclamaciones_json.append({
+                        "cliente": r["cliente"],
+                        "idpoliza": r["idpoliza"],
+                        "tipo_seguro": r["tipo_seguro"],
+                        "idreclamacion": r["idreclamacion"],
+                        "tipo_siniestro": r["tipo_siniestro"],
+                        "fechasiniestro": r["fechasiniestro"].strftime('%Y-%m-%d') if isinstance(r["fechasiniestro"], (date, datetime)) else str(r["fechasiniestro"]),
+                        "montoreclamado": float(r["montoreclamado"]),
+                        "montoindemnizado": float(r["montoindemnizado"]),
+                        "estado": r["estado"]
+                    })
+            else:
+                st.info("No hay reclamaciones registradas en el sistema.")
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_rec", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Reclamaciones",
+                    "reclamaciones": reclamaciones_json
+                }
+                crud_reportes.crear("Listado de Reclamaciones", datos)
+                st.success("Reporte de Listado de Reclamaciones guardado con éxito en el historial.")
+                st.rerun()
+
+        # 4. LISTADO DE REASEGURADORAS
+        elif reporte_listados == "Listado de Reaseguradoras":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            with Database() as db:
+                reaseguradoras = db.fetch_all(
+                    """
+                    SELECT r.idreaseguradora, r.nombre, p.nombre as pais,
+                           tr.nombre as tipo_reaseguro
+                    FROM reaseguradora r
+                    JOIN pais p ON r.idpais = p.idpais
+                    JOIN tipo_reaseguro tr ON r.idtiporeaseguro = tr.idtiporeaseguro
+                    ORDER BY r.nombre;
+                    """
+                )
+            
+            reaseguradoras_json = []
+            if reaseguradoras:
+                for rea in reaseguradoras:
+                    with st.expander(f"{rea['nombre']} ({rea['idreaseguradora']})"):
+                        st.markdown(f"**País de origen:** {rea['pais']}")
+                        st.markdown(f"**Tipo de reaseguro:** {rea['tipo_reaseguro']}")
+                        
+                        # Obtener participaciones
+                        with Database() as db:
+                            participaciones = db.fetch_all(
+                                """
+                                SELECT ts.nombre as tipo_seguro, pr.porcentaje
+                                FROM participacion_reaseguro pr
+                                JOIN tipo_seguro ts ON pr.idtiposeguro = ts.idtiposeguro
+                                WHERE pr.idreaseguradora = %s;
+                                """,
+                                (rea["idreaseguradora"],)
+                            )
+                        
+                        part_json = []
+                        if participaciones:
+                            df = pd.DataFrame(participaciones)
+                            df_display = df.rename(columns={
+                                "tipo_seguro": "Tipo de seguro",
+                                "porcentaje": "Porcentaje (%)"
+                            })
+                            st.dataframe(df_display, use_container_width=True, hide_index=True)
+                            
+                            for p in participaciones:
+                                part_json.append({
+                                    "tipo_seguro": p["tipo_seguro"],
+                                    "porcentaje": float(p["porcentaje"])
+                                })
+                        else:
+                            st.info("No tiene participaciones de reaseguro registradas.")
+                            
+                        reaseguradoras_json.append({
+                            "idreaseguradora": rea["idreaseguradora"],
+                            "nombre": rea["nombre"],
+                            "pais": rea["pais"],
+                            "tipo_reaseguro": rea["tipo_reaseguro"],
+                            "participaciones": part_json
+                        })
+            else:
+                st.info("No hay reaseguradoras registradas en el sistema.")
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_reas", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Reaseguradoras",
+                    "reaseguradoras": reaseguradoras_json
+                }
+                crud_reportes.crear("Listado de Reaseguradoras", datos)
+                st.success("Reporte de Listado de Reaseguradoras guardado con éxito en el historial.")
+                st.rerun()
+
+        # 5. LISTADO DE PÓLIZAS VENCIDAS
+        elif reporte_listados == "Listado de Pólizas Vencidas":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            with Database() as db:
+                polizas = db.fetch_all(
+                    """
+                    SELECT p.idpoliza, c.nombre || ' ' || c.apellidos as cliente,
+                           ts.nombre as tipo_seguro,
+                           p.fecha_inicio as fechainicio, p.fecha_fin as fechafin, p.monto_asegurado as montoasegurado
+                    FROM poliza p
+                    JOIN cliente c ON p.idcliente = c.idcliente
+                    JOIN tipo_seguro ts ON p.idtiposeguro = ts.idtiposeguro
+                    WHERE p.fecha_fin < CURRENT_DATE
+                    ORDER BY p.fecha_fin;
+                    """
+                )
+            
+            polizas_json = []
+            if polizas:
+                df = pd.DataFrame(polizas)
+                df_display = df.rename(columns={
+                    "idpoliza": "Número de póliza",
+                    "cliente": "Cliente",
+                    "tipo_seguro": "Tipo de seguro",
+                    "fechainicio": "Fecha inicio",
+                    "fechafin": "Fecha fin",
+                    "montoasegurado": "Monto asegurado"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                for p in polizas:
+                    polizas_json.append({
+                        "idpoliza": p["idpoliza"],
+                        "cliente": p["cliente"],
+                        "tipo_seguro": p["tipo_seguro"],
+                        "fechainicio": p["fechainicio"].strftime('%Y-%m-%d'),
+                        "fechafin": p["fechafin"].strftime('%Y-%m-%d'),
+                        "montoasegurado": float(p["montoasegurado"])
+                    })
+            else:
+                st.success("No se registran pólizas vencidas actualmente en el sistema.")
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_venc", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Pólizas Vencidas",
+                    "polizas": polizas_json
+                }
+                crud_reportes.crear("Listado de Pólizas Vencidas", datos)
+                st.success("Reporte de Listado de Pólizas Vencidas guardado con éxito en el historial.")
+                st.rerun()
+
+        # 6. LISTADO DE CLIENTES CON PÓLIZAS CANCELADAS
+        elif reporte_listados == "Listado de Clientes con Pólizas Canceladas":
+            st.caption(f"Fecha del listado: {date.today().strftime('%d/%m/%Y')}")
+            with Database() as db:
+                clientes = db.fetch_all(
+                    """
+                    SELECT c.idcliente, c.nombre, c.apellidos,
+                           COUNT(p.idpoliza) as cantidad_canceladas,
+                           STRING_AGG(pc.motivo, '; ') as motivos
+                    FROM cliente c
+                    JOIN poliza p ON c.idcliente = p.idcliente
+                    JOIN poliza_cancelada pc ON p.idpoliza = pc.idpoliza
+                    GROUP BY c.idcliente, c.nombre, c.apellidos
+                    ORDER BY c.apellidos;
+                    """
+                )
+            
+            clientes_json = []
+            if clientes:
+                df = pd.DataFrame(clientes)
+                df_display = df.rename(columns={
+                    "idcliente": "ID",
+                    "nombre": "Nombre",
+                    "apellidos": "Apellidos",
+                    "cantidad_canceladas": "Pólizas canceladas",
+                    "motivos": "Motivo(s) de cancelación"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                for c in clientes:
+                    clientes_json.append({
+                        "idcliente": c["idcliente"],
+                        "nombre": c["nombre"],
+                        "apellidos": c["apellidos"],
+                        "cantidad_canceladas": int(c["cantidad_canceladas"]),
+                        "motivos": c["motivos"]
+                    })
+            else:
+                st.info("No se registran clientes con pólizas canceladas en el sistema.")
+                
+            if st.button("Generar Reporte", key="btn_gen_lis_canc", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Listado de Clientes con Pólizas Canceladas",
+                    "clientes": clientes_json
+                }
+                crud_reportes.crear("Listado de Clientes con Pólizas Canceladas", datos)
+                st.success("Reporte de Clientes con Pólizas Canceladas guardado con éxito en el historial.")
+                st.rerun()
+
+    # =========================================================================
+    # TAB 2: RESÚMENES Y ESTADÍSTICAS
+    # =========================================================================
+    with tab2:
+        st.subheader("Análisis Estadísticos y Resúmenes Ejecutivos")
+        reporte_resumenes = st.selectbox(
+            "Seleccione el resumen estadístico a generar:",
+            options=[
+                "Resumen de Pólizas por Tipo de Seguro",
+                "Resumen de Reclamaciones por Estado",
+                "Listado de Ingresos Mensuales",
+                "Reporte de Clientes con Reclamaciones Aprobadas",
+                "Reporte de Clientes con Reclamaciones Rechazadas"
+            ],
+            key="sb_resumenes"
+        )
+        st.divider()
+        
+        # 7. RESUMEN DE PÓLIZAS POR TIPO DE SEGURO
+        if reporte_resumenes == "Resumen de Pólizas por Tipo de Seguro":
+            st.caption(f"Fecha del reporte: {date.today().strftime('%d/%m/%Y')}")
+            tipos_seguro = listar_tipos_seguro()
+            resumen_json = []
+            
+            for tipo in tipos_seguro:
+                with Database() as db:
+                    stats = db.fetch_one(
+                        """
+                        SELECT COUNT(*) as cantidad,
+                               COALESCE(SUM(prima_mensual), 0) as total_primas,
+                               COALESCE(SUM(monto_asegurado), 0) as total_asegurado
+                        FROM poliza
+                        WHERE idtiposeguro = %s AND idestadopoliza = 1;
+                        """,
+                        (tipo["idtiposeguro"],)
+                    )
+                resumen_json.append({
+                    "Tipo de seguro": tipo["nombre"],
+                    "Cantidad de pólizas activas": int(stats["cantidad"]),
+                    "Total de primas mensuales": float(stats["total_primas"]),
+                    "Total de monto asegurado": float(stats["total_asegurado"])
+                })
+            
+            if resumen_json:
+                df = pd.DataFrame(resumen_json)
+                # Formatear visualmente para Streamlit sin dañar los tipos del JSON
+                df_display = df.copy()
+                df_display["Total de primas mensuales"] = df_display["Total de primas mensuales"].map(lambda x: f"${x:,.2f}")
+                df_display["Total de monto asegurado"] = df_display["Total de monto asegurado"].map(lambda x: f"${x:,.2f}")
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+            if st.button("Generar Reporte", key="btn_gen_res_tipo", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Resumen de Pólizas por Tipo de Seguro",
+                    "resumen": resumen_json
+                }
+                crud_reportes.crear("Resumen de Pólizas por Tipo de Seguro", datos)
+                st.success("Reporte guardado con éxito en el historial.")
+                st.rerun()
+
+        # 8. RESUMEN DE RECLAMACIONES POR ESTADO
+        elif reporte_resumenes == "Resumen de Reclamaciones por Estado":
+            st.caption(f"Fecha del reporte: {date.today().strftime('%d/%m/%Y')}")
+            estados = listar_estados_reclamacion()
+            resumen_json = []
+            
+            for estado in estados:
+                with Database() as db:
+                    stats = db.fetch_one(
+                        """
+                        SELECT COUNT(*) as cantidad,
+                               COALESCE(SUM(monto_reclamado), 0) as total_reclamado,
+                               COALESCE(SUM(monto_indemnizado), 0) as total_indemnizado
+                        FROM reclamacion
+                        WHERE idestadoreclamacion = %s;
+                        """,
+                        (estado["idestadoreclamacion"],)
+                    )
+                resumen_json.append({
+                    "Estado": estado["nombre"],
+                    "Cantidad": int(stats["cantidad"]),
+                    "Total monto reclamado": float(stats["total_reclamado"]),
+                    "Total monto indemnizado": float(stats["total_indemnizado"])
+                })
+            
+            if resumen_json:
+                df = pd.DataFrame(resumen_json)
+                df_display = df.copy()
+                df_display["Total monto reclamado"] = df_display["Total monto reclamado"].map(lambda x: f"${x:,.2f}")
+                df_display["Total monto indemnizado"] = df_display["Total monto indemnizado"].map(lambda x: f"${x:,.2f}")
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+            if st.button("Generar Reporte", key="btn_gen_res_est", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Resumen de Reclamaciones por Estado",
+                    "resumen": resumen_json
+                }
+                crud_reportes.crear("Resumen de Reclamaciones por Estado", datos)
+                st.success("Reporte guardado con éxito en el historial.")
+                st.rerun()
+
+        # 9. LISTADO DE INGRESOS MENSUALES
+        elif reporte_resumenes == "Listado de Ingresos Mensuales":
+            st.caption(f"Fecha del reporte: {date.today().strftime('%d/%m/%Y')}")
+            año_actual = datetime.now().year
+            año = st.selectbox("Seleccione el año fiscal para el desglose:", [año_actual, año_actual - 1, año_actual - 2], key="sb_año_ingresos_gen")
+            
+            with Database() as db:
+                ingresos = db.fetch_all(
+                    """
+                    SELECT EXTRACT(MONTH FROM fecha_pago) as mes,
+                           TO_CHAR(fecha_pago, 'Month') as nombre_mes,
+                           COALESCE(SUM(monto_pagado), 0) as ingreso
+                    FROM pago
+                    WHERE EXTRACT(YEAR FROM fecha_pago) = %s
+                    GROUP BY mes, nombre_mes
+                    ORDER BY mes;
+                    """,
+                    (año,)
+                )
+            
+            if ingresos:
+                meses = {
+                    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+                    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+                    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+                }
+                
+                datos_completos = []
+                for mes_num, mes_nombre in meses.items():
+                    ing_val = next((float(i["ingreso"]) for i in ingresos if int(i["mes"]) == mes_num), 0.0)
+                    datos_completos.append({
+                        "mes": mes_nombre,
+                        "ingreso": ing_val
+                    })
+                
+                total_anual = sum(d["ingreso"] for d in datos_completos)
+                st.metric("Ingreso Total Anual", f"${total_anual:,.2f}")
+                
+                filas = [{'Mes': d['mes'], 'Ingreso Mensual': f"${d['ingreso']:,.2f}"} for d in datos_completos]
+                st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
+                
+                # Gráfico
+                st.subheader("Gráfico de ingresos mensuales")
+                df_chart = pd.DataFrame(datos_completos)
+                st.bar_chart(df_chart.set_index("mes")["ingreso"])
+                
+                if st.button("Generar Reporte", key="btn_gen_ing_mens", use_container_width=True):
+                    datos = {
+                        "tipo_reporte": "Ingresos Mensuales",
+                        "año": año,
+                        "total_anual": float(total_anual),
+                        "ingresos": datos_completos
+                    }
+                    crud_reportes.crear(f"Ingresos Mensuales {año}", datos)
+                    st.success(f"Reporte de ingresos anuales {año} guardado con éxito.")
+                    st.rerun()
+            else:
+                st.info(f"No hay pagos registrados para el año fiscal {año}.")
+
+        # 10. CLIENTES CON RECLAMACIONES APROBADAS
+        elif reporte_resumenes == "Reporte de Clientes con Reclamaciones Aprobadas":
+            st.caption(f"Fecha del reporte: {date.today().strftime('%d/%m/%Y')}")
+            with Database() as db:
+                clientes = db.fetch_all(
+                    """
+                    SELECT c.idcliente, c.nombre, c.apellidos,
+                           COUNT(r.idreclamacion) as cantidad_aprobadas,
+                           COALESCE(SUM(r.monto_indemnizado), 0) as total_indemnizado
+                    FROM cliente c
+                    JOIN poliza p ON c.idcliente = p.idcliente
+                    JOIN reclamacion r ON p.idpoliza = r.idpoliza
+                    WHERE r.idestadoreclamacion = (SELECT idestadoreclamacion FROM estado_reclamacion WHERE lower(nombre) = 'aprobada')
+                    GROUP BY c.idcliente, c.nombre, c.apellidos
+                    ORDER BY total_indemnizado DESC;
+                    """
+                )
+            
+            clientes_json = []
+            if clientes:
+                df = pd.DataFrame(clientes)
+                df_display = df.rename(columns={
+                    "idcliente": "ID",
+                    "nombre": "Nombre",
+                    "apellidos": "Apellidos",
+                    "cantidad_aprobadas": "Reclamaciones aprobadas",
+                    "total_indemnizado": "Total indemnizado ($)"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                for c in clientes:
+                    clientes_json.append({
+                        "idcliente": c["idcliente"],
+                        "nombre": c["nombre"],
+                        "apellidos": c["apellidos"],
+                        "cantidad_aprobadas": int(c["cantidad_aprobadas"]),
+                        "total_indemnizado": float(c["total_indemnizado"])
+                    })
+            else:
+                st.info("No se registran clientes con reclamaciones aprobadas actualmente.")
+                
+            if st.button("Generar Reporte", key="btn_gen_rec_aprob", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Reporte de Clientes con Reclamaciones Aprobadas",
+                    "clientes": clientes_json
+                }
+                crud_reportes.crear("Reporte de Clientes con Reclamaciones Aprobadas", datos)
+                st.success("Reporte guardado con éxito.")
+                st.rerun()
+
+        # 11. CLIENTES CON RECLAMACIONES RECHAZADAS
+        elif reporte_resumenes == "Reporte de Clientes con Reclamaciones Rechazadas":
+            st.caption(f"Fecha del reporte: {date.today().strftime('%d/%m/%Y')}")
+            with Database() as db:
+                clientes = db.fetch_all(
+                    """
+                    SELECT c.idcliente, c.nombre, c.apellidos,
+                           COUNT(r.idreclamacion) as cantidad_rechazadas,
+                           STRING_AGG(rr.motivo, '; ') as motivos
+                    FROM cliente c
+                    JOIN poliza p ON c.idcliente = p.idcliente
+                    JOIN reclamacion r ON p.idpoliza = r.idpoliza
+                    JOIN reclamacion_rechazada rr ON r.idreclamacion = rr.idreclamacion
+                    GROUP BY c.idcliente, c.nombre, c.apellidos
+                    ORDER BY cantidad_rechazadas DESC;
+                    """
+                )
+            
+            clientes_json = []
+            if clientes:
+                df = pd.DataFrame(clientes)
+                df_display = df.rename(columns={
+                    "idcliente": "ID",
+                    "nombre": "Nombre",
+                    "apellidos": "Apellidos",
+                    "cantidad_rechazadas": "Reclamaciones rechazadas",
+                    "motivos": "Motivo(s) del rechazo"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                
+                for c in clientes:
+                    clientes_json.append({
+                        "idcliente": c["idcliente"],
+                        "nombre": c["nombre"],
+                        "apellidos": c["apellidos"],
+                        "cantidad_rechazadas": int(c["cantidad_rechazadas"]),
+                        "motivos": c["motivos"]
+                    })
+            else:
+                st.info("No se registran clientes con reclamaciones rechazadas en el sistema.")
+                
+            if st.button("Generar Reporte", key="btn_gen_rec_rech", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Reporte de Clientes con Reclamaciones Rechazadas",
+                    "clientes": clientes_json
+                }
+                crud_reportes.crear("Reporte de Clientes con Reclamaciones Rechazadas", datos)
+                st.success("Reporte guardado con éxito.")
+                st.rerun()
+
+    # =========================================================================
+    # TAB 3: FICHAS ESPECIALES
+    # =========================================================================
+    with tab3:
+        st.subheader("Consultas de Fichas Técnicas e Informativas")
+        reporte_fichas = st.selectbox(
+            "Seleccione el tipo de ficha a consultar:",
+            options=[
+                "Ficha de la Agencia de Seguros",
+                "Ficha de un Cliente Determinado",
+                "Ficha de una Reaseguradora Asociada"
+            ],
+            key="sb_fichas"
+        )
+        st.divider()
+        
+        # 12. FICHA DE LA AGENCIA
+        if reporte_fichas == "Ficha de la Agencia de Seguros":
+            agencia = obtener_agencia()
+            if agencia:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown('**Datos de la Agencia**')
+                    st.text(f"Nombre: {agencia['nombre']}")
+                    st.text(f"Dirección Postal: {agencia['direccion']}")
+                    st.text(f"Teléfono: {agencia['telefono']}")
+                    st.text(f"Email: {agencia['email']}")
+                with col2:
+                    st.markdown('**Equipo Directivo**')
+                    st.text(f"Director General: {agencia['directorgeneral']}")
+                    st.text(f"Jefe de Seguros: {agencia['jefeseguros']}")
+                    st.text(f"Jefe de Reclamaciones: {agencia['jefereclamaciones']}")
+                    
+                if st.button("Generar Reporte", key="btn_gen_fic_ag", use_container_width=True):
+                    datos = {
+                        "tipo_reporte": "Ficha de la Agencia de Seguros",
+                        "nombre": agencia["nombre"],
+                        "direccion": agencia["direccion"],
+                        "telefono": agencia["telefono"],
+                        "email": agencia["email"],
+                        "director_general": agencia["directorgeneral"],
+                        "jefe_seguros": agencia["jefeseguros"],
+                        "jefe_reclamaciones": agencia["jefereclamaciones"]
+                    }
+                    crud_reportes.crear("Ficha Agencia", datos)
+                    st.success("Ficha de la Agencia guardada históricamente.")
+                    st.rerun()
+            else:
+                st.warning("No hay datos de la agencia registrados.")
+
+        # 13. FICHA DE UN CLIENTE DETERMINADO
+        elif reporte_fichas == "Ficha de un Cliente Determinado":
+            clientes = listar_clientes()
+            if clientes:
+                cliente_opciones = {c["idcliente"]: f"{c['nombre']} {c['apellidos']} - {c['no_identificacion']}" for c in clientes}
+                cliente_seleccionado = st.selectbox(
+                    "Seleccione el cliente a consultar:",
+                    options=list(cliente_opciones.keys()),
+                    format_func=lambda x: cliente_opciones[x],
+                    key="sb_ficha_cli_sel"
+                )
+                
+                if cliente_seleccionado:
+                    cliente = obtener_cliente_por_id(cliente_seleccionado)
+                    if cliente:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown(f"**Nombre:** {cliente['nombre']} {cliente['apellidos']}")
+                            st.markdown(f"**Cédula/Pasaporte:** {cliente['no_identificacion']}")
+                            st.markdown(f"**Edad:** {cliente['edad']} años")
+                            st.markdown(f"**Sexo:** {'Masculino' if cliente['sexo'] == 'M' else 'Femenino'}")
+                        with col2:
+                            st.markdown(f"**Teléfono:** {cliente['telefono'] or 'No registrado'}")
+                            st.markdown(f"**Dirección:** {cliente['dir_postal'] or 'No registrada'}")
+                            st.markdown(f"**Correo:** {cliente['correo'] or 'No registrado'}")
+                            
+                        # Consultar pólizas y primas pagadas
+                        with Database() as db:
+                            polizas_activas = db.fetch_one(
+                                """
+                                SELECT COUNT(*) as cantidad
+                                FROM poliza
+                                WHERE idcliente = %s AND idestadopoliza = 1;
+                                """,
+                                (cliente_seleccionado,)
+                            )
+                            total_pagado = total_pagado_por_cliente(cliente_seleccionado)
+                            
+                        st.divider()
+                        col_m1, col_m2 = st.columns(2)
+                        with col_m1:
+                            st.metric("Pólizas Activas", polizas_activas["cantidad"])
+                        with col_m2:
+                            st.metric("Total Primas Pagadas", f"${total_pagado:,.2f}")
+                            
+                        # Reclamaciones
+                        with Database() as db:
+                            reclamaciones = db.fetch_all(
+                                """
+                                SELECT r.idreclamacion, p.idpoliza, ts.nombre as tipo_seguro,
+                                       r.fecha_siniestro as fechasiniestro, r.monto_reclamado as montoreclamado, r.monto_indemnizado as montoindemnizado,
+                                       er.nombre as estado
+                                FROM reclamacion r
+                                JOIN poliza p ON r.idpoliza = p.idpoliza
+                                JOIN tipo_seguro ts ON p.idtiposeguro = ts.idtiposeguro
+                                JOIN estado_reclamacion er ON r.idestadoreclamacion = er.idestadoreclamacion
+                                WHERE p.idcliente = %s
+                                ORDER BY r.fecha_siniestro DESC;
+                                """,
+                                (cliente_seleccionado,)
+                            )
+                        
+                        reclamaciones_list_json = []
+                        if reclamaciones:
+                            st.subheader("Historial de Reclamaciones")
+                            df = pd.DataFrame(reclamaciones)
+                            df_display = df.rename(columns={
+                                "idreclamacion": "ID Reclamación",
+                                "idpoliza": "Póliza",
+                                "tipo_seguro": "Ramo Seguro",
+                                "fechasiniestro": "Fecha",
+                                "montoreclamado": "Monto reclamado",
+                                "montoindemnizado": "Monto indemnizado",
+                                "estado": "Estado"
+                            })
+                            st.dataframe(df_display, use_container_width=True, hide_index=True)
+                            
+                            for r in reclamaciones:
+                                reclamaciones_list_json.append({
+                                    "idreclamacion": r["idreclamacion"],
+                                    "idpoliza": r["idpoliza"],
+                                    "tipo_seguro": r["tipo_seguro"],
+                                    "fechasiniestro": r["fechasiniestro"].strftime('%Y-%m-%d') if isinstance(r["fechasiniestro"], (date, datetime)) else str(r["fechasiniestro"]),
+                                    "montoreclamado": float(r["montoreclamado"]),
+                                    "montoindemnizado": float(r["montoindemnizado"]),
+                                    "estado": r["estado"]
+                                })
+                        else:
+                            st.info("El cliente no tiene reclamaciones de siniestros registradas.")
+                            
+                        if st.button("Generar Reporte", key="btn_gen_fic_cli", use_container_width=True):
+                            # Consultar el nombre del país para el JSON
+                            with Database() as db:
+                                pais_row = db.fetch_one("SELECT nombre FROM pais WHERE idpais = %s", (cliente["idpais"],))
+                            
+                            datos = {
+                                "tipo_reporte": "Ficha de un Cliente Determinado",
+                                "cliente": {
+                                    "nombre": cliente["nombre"],
+                                    "apellidos": cliente["apellidos"],
+                                    "identificacion": cliente["no_identificacion"],
+                                    "telefono": cliente["telefono"],
+                                    "correo": cliente["correo"],
+                                    "pais": pais_row["nombre"] if pais_row else "N/A"
+                                },
+                                "polizas_activas": int(polizas_activas["cantidad"]),
+                                "total_primas": float(total_pagado),
+                                "reclamaciones": len(reclamaciones),
+                                "reclamaciones_list": reclamaciones_list_json
+                            }
+                            crud_reportes.crear(f"Ficha Cliente {cliente['nombre']} {cliente['apellidos']}", datos)
+                            st.success(f"Ficha del cliente {cliente['nombre']} guardada con éxito.")
+                            st.rerun()
+            else:
+                st.warning("No hay clientes registrados en el sistema.")
+
+        # 14. FICHA DE UNA REASEGURADORA ASOCIADA
+        elif reporte_fichas == "Ficha de una Reaseguradora Asociada":
+            with Database() as db:
+                reaseguradoras = db.fetch_all("SELECT idreaseguradora, nombre FROM reaseguradora ORDER BY nombre;")
+            
+            if reaseguradoras:
+                rea_opciones = {r["idreaseguradora"]: r["nombre"] for r in reaseguradoras}
+                rea_seleccionada = st.selectbox(
+                    "Seleccione la reaseguradora a consultar:",
+                    options=list(rea_opciones.keys()),
+                    format_func=lambda x: rea_opciones[x],
+                    key="sb_ficha_reas_sel"
+                )
+                
+                if rea_seleccionada:
+                    rea = obtener_reaseguradora_por_id(rea_seleccionada)
+                    if rea:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown(f"**Nombre:** {rea['nombre']}")
+                            st.markdown(f"**País de origen:** {rea['pais_nombre']}")
+                        with col2:
+                            st.markdown(f"**Tipo de reaseguro:** {rea['tipo_reaseguro_nombre']}")
+                            st.markdown(f"**Email de contacto:** {rea.get('email') or 'No registrado'}")
+                            
+                        # Participaciones
+                        with Database() as db:
+                            participaciones = db.fetch_all(
+                                """
+                                SELECT ts.nombre as tipo_seguro, pr.porcentaje
+                                FROM participacion_reaseguro pr
+                                JOIN tipo_seguro ts ON pr.idtiposeguro = ts.idtiposeguro
+                                WHERE pr.idreaseguradora = %s;
+                                """,
+                                (rea_seleccionada,)
+                            )
+                        
+                        part_json = []
+                        if participaciones:
+                            st.subheader("Participación por Tipo de Seguro")
+                            df = pd.DataFrame(participaciones)
+                            df_display = df.rename(columns={
+                                "tipo_seguro": "Tipo de seguro",
+                                "porcentaje": "Porcentaje (%)"
+                            })
+                            st.dataframe(df_display, use_container_width=True, hide_index=True)
+                            
+                            for p in participaciones:
+                                part_json.append({
+                                    "tipo_seguro": p["tipo_seguro"],
+                                    "porcentaje": float(p["porcentaje"])
+                                })
+                        else:
+                            st.info("Esta reaseguradora no posee participaciones de cobertura registradas.")
+                            
+                        if st.button("Generar Reporte", key="btn_gen_fic_reas", use_container_width=True):
+                            datos = {
+                                "tipo_reporte": "Ficha de una Reaseguradora Asociada",
+                                "nombre": rea["nombre"],
+                                "pais": rea["pais_nombre"],
+                                "tipo_reaseguro": rea["tipo_reaseguro_nombre"],
+                                "email": rea.get("email") or "No registrado",
+                                "participaciones": part_json
+                            }
+                            crud_reportes.crear(f"Ficha Reaseguradora {rea['nombre']}", datos)
+                            st.success(f"Ficha técnica de la reaseguradora {rea['nombre']} guardada.")
+                            st.rerun()
+            else:
+                st.warning("No hay reaseguradoras registradas en el sistema.")
+
+    # =========================================================================
+    # TAB 4: REPORTES PARAMÉTRICOS
+    # =========================================================================
+    with tab4:
+        st.subheader("Filtros Temporales y Reportes de Fechas")
+        reporte_param = st.selectbox(
+            "Seleccione el reporte paramétrico a generar:",
+            options=[
+                "Reporte de Pólizas Emitidas en un Período",
+                "Reporte de Estado de las Reclamaciones",
+                "Reporte de Ingresos Mensuales por Concepto de Primas"
+            ],
+            key="sb_param"
+        )
+        st.divider()
+        
+        # 15. REPORTES DE PÓLIZAS EN PERÍODO
+        if reporte_param == "Reporte de Pólizas Emitidas en un Período":
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown('**Datos de la Agencia**')
-                st.text(f'Nombre: {agencia.nombre}')
-                st.text(f'Dirección Postal: {agencia.direccion}')
-                st.text(f'Teléfono: {agencia.telefono}')
-                st.text(f'Email: {agencia.email}')
+                fecha_desde = st.date_input("Fecha desde:", value=date.today().replace(month=1, day=1), key="dp_pol_desde")
             with col2:
-                st.markdown('**Directivos**')
-                st.text(f'Director General: {agencia.directorGeneral}')
-                st.text(f'Jefe de Seguros: {agencia.jefeSeguros}')
-                st.text(f'Jefe de Reclamaciones: {agencia.jefeReclamaciones}')
+                fecha_hasta = st.date_input("Fecha hasta:", value=date.today(), key="dp_pol_hasta")
+                
+            with Database() as db:
+                polizas = db.fetch_all(
+                    """
+                    SELECT p.idpoliza, c.nombre || ' ' || c.apellidos as cliente,
+                           ts.nombre as tipo_seguro,
+                           p.fecha_inicio as fechainicio, p.fecha_fin as fechafin, p.prima_mensual as primamensual, ep.nombre as estado
+                    FROM poliza p
+                    JOIN cliente c ON p.idcliente = c.idcliente
+                    JOIN tipo_seguro ts ON p.idtiposeguro = ts.idtiposeguro
+                    JOIN estado_poliza ep ON p.idestadopoliza = ep.idestadopoliza
+                    WHERE p.fecha_inicio BETWEEN %s AND %s
+                    ORDER BY p.fecha_inicio;
+                    """,
+                    (fecha_desde, fecha_hasta)
+                )
             
-            if st.button('Generar Reporte', key='gen_agencia', use_container_width=True):
+            polizas_json = []
+            if polizas:
+                df = pd.DataFrame(polizas)
+                df_display = df.rename(columns={
+                    "idpoliza": "Número de póliza",
+                    "cliente": "Cliente",
+                    "tipo_seguro": "Tipo de seguro",
+                    "fechainicio": "Fecha inicio",
+                    "fechafin": "Fecha fin",
+                    "primamensual": "Prima mensual ($)",
+                    "estado": "Estado"
+                })
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                st.caption(f"Total de pólizas emitidas en el período seleccionado: {len(polizas)}")
+                
+                for p in polizas:
+                    polizas_json.append({
+                        "id": p["idpoliza"],
+                        "cliente": p["cliente"],
+                        "tipo_seguro": p["tipo_seguro"],
+                        "fecha_inicio": p["fechainicio"].strftime('%Y-%m-%d'),
+                        "fecha_fin": p["fechafin"].strftime('%Y-%m-%d'),
+                        "prima": float(p["primamensual"]),
+                        "estado": p["estado"]
+                    })
+            else:
+                st.info("No se registraron emisiones de pólizas en el rango temporal seleccionado.")
+                
+            if polizas and st.button("Generar Reporte", key="btn_gen_pol_per", use_container_width=True):
                 datos = {
-                    'nombre': agencia.nombre,
-                    'direccion': agencia.direccion,
-                    'telefono': agencia.telefono,
-                    'email': agencia.email,
-                    'director_general': agencia.directorGeneral,
-                    'jefe_seguros': agencia.jefeSeguros,
-                    'jefe_reclamaciones': agencia.jefeReclamaciones
+                    "tipo_reporte": "Reporte de Pólizas Emitidas en un Período",
+                    "fecha_inicio": fecha_desde.strftime('%d/%m/%Y'),
+                    "fecha_fin": fecha_hasta.strftime('%d/%m/%Y'),
+                    "polizas": polizas_json
                 }
-                crud_reportes.crear('Ficha Agencia', datos)
-                st.success('Reporte guardado con la fecha de hoy.')
+                crud_reportes.crear(f"Pólizas por Período {fecha_desde.strftime('%d%m%Y')} - {fecha_hasta.strftime('%d%m%Y')}", datos)
+                st.success("Reporte temporal de pólizas guardado con éxito.")
                 st.rerun()
-        _mostrar_reportes_guardados('Ficha Agencia')
-    
-    with tab3:
-        st.subheader('Ficha de un Cliente Determinado')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        crud_cliente = CrudCliente()
-        clientes = crud_cliente.obtener_todos()
-        
-        if not clientes:
-            st.warning('No hay clientes registrados.')
-        else:
-            cliente_sel = st.selectbox('Seleccione un cliente', options=clientes, format_func=lambda x: f'{x.nombre} {x.apellidos} - {x.noIdentificacion}')
-            if cliente_sel:
-                cliente = cliente_sel
-                pais = CrudPais().obtener(cliente.idPais)
-                polizas_cli = [p for p in CrudPoliza().obtener_todos() if p.idCliente == cliente.id]
-                polizas_activas = [p for p in polizas_cli if p.idEstadoPoliza == 1]
-                pagos = CrudPago().obtener_todos()
-                total_primas = sum(p.montoPagado for p in pagos if any(pol.id == p.idPoliza for pol in polizas_cli))
+
+        # 16. REPORTE DE ESTADO DE RECLAMACIONES
+        elif reporte_param == "Reporte de Estado de las Reclamaciones":
+            col1, col2 = st.columns(2)
+            with col1:
+                fecha_desde_sini = st.date_input("Fecha siniestro desde:", value=date.today().replace(month=1, day=1), key="dp_rec_desde")
+            with col2:
+                fecha_hasta_sini = st.date_input("Fecha siniestro hasta:", value=date.today(), key="dp_rec_hasta")
                 
-                reclamaciones = []
-                for pol in polizas_cli:
-                    reclamaciones.extend([r for r in CrudReclamacion().obtener_todos() if r.idPoliza == pol.id])
+            with Database() as db:
+                reclamaciones = db.fetch_all(
+                    """
+                    SELECT r.idreclamacion, c.nombre || ' ' || c.apellidos as cliente,
+                           r.idpoliza, ts.nombre as tipo_seguro, tsi.nombre as tipo_siniestro,
+                           r.fecha_siniestro as fechasiniestro, er.nombre as estado, r.monto_reclamado as montoreclamado, r.monto_indemnizado as montoindemnizado
+                    FROM reclamacion r
+                    JOIN poliza p ON r.idpoliza = p.idpoliza
+                    JOIN cliente c ON p.idcliente = c.idcliente
+                    JOIN tipo_seguro ts ON p.idtiposeguro = ts.idtiposeguro
+                    JOIN tipo_siniestro tsi ON r.idtiposiniestro = tsi.idtiposiniestro
+                    JOIN estado_reclamacion er ON r.idestadoreclamacion = er.idestadoreclamacion
+                    WHERE r.fecha_siniestro BETWEEN %s AND %s
+                    ORDER BY r.fecha_siniestro DESC;
+                    """,
+                    (fecha_desde_sini, fecha_hasta_sini)
+                )
+            
+            reclamaciones_json = []
+            if reclamaciones:
+                df = pd.DataFrame(reclamaciones)
+                df_display = df.rename(columns={
+                    "idreclamacion": "No. Reclamación",
+                    "cliente": "Cliente",
+                    "idpoliza": "Número de póliza",
+                    "tipo_seguro": "Ramo Seguro",
+                    "tipo_siniestro": "Causa Siniestro",
+                    "fechasiniestro": "Fecha Siniestro",
+                    "estado": "Estado",
+                    "montoreclamado": "Reclamado ($)",
+                    "montoindemnizado": "Indemnizado ($)"
+                })
+                st.dataframe(df_display[[
+                    "No. Reclamación", "Cliente", "Número de póliza", "Ramo Seguro",
+                    "Causa Siniestro", "Fecha Siniestro", "Estado", "Reclamado ($)", "Indemnizado ($)"
+                ]], use_container_width=True, hide_index=True)
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown('**Información del Cliente**')
-                    st.text(f'Nombre: {cliente.nombre} {cliente.apellidos}')
-                    st.text(f'No. Identificación: {cliente.noIdentificacion}')
-                    st.text(f'Teléfono: {cliente.telefono}')
-                    st.text(f'Email: {cliente.correo}')
-                    st.text(f'Dirección Postal: {cliente.dirPostal}')
-                    st.text(f"País: {pais.nombre if pais else 'N/A'}")
-                with col2:
-                    st.markdown('**Resumen de Pólizas**')
-                    st.metric('Pólizas Activas', len(polizas_activas))
-                    st.metric('Valor Total Primas Pagadas', f'${total_primas:,.2f}')
+                for r in reclamaciones:
+                    reclamaciones_json.append({
+                        "id": r["idreclamacion"],
+                        "cliente": r["cliente"],
+                        "monto_reclamado": float(r["montoreclamado"]),
+                        "monto_indemnizado": float(r["montoindemnizado"]),
+                        "estado": r["estado"]
+                    })
+            else:
+                st.info("No se registraron reclamaciones de siniestros en el rango temporal seleccionado.")
                 
-                if reclamaciones:
-                    st.divider()
-                    st.markdown('**Listado de Reclamaciones**')
-                    filas_rec = []
-                    for r in reclamaciones:
-                        pol = next((p for p in CrudPoliza().obtener_todos() if p.id == r.idPoliza), None)
-                        ts_obj = CrudTipoSeguro().obtener(pol.idTipoSeguro) if pol else None
-                        filas_rec.append({
-                            'No. Reclamación': r.id,
-                            'Tipo Seguro': ts_obj.nombre if ts_obj else 'N/A',
-                            'Fecha Siniestro': r.fechaSiniestro.strftime('%d/%m/%Y') if r.fechaSiniestro else 'N/A',
-                            'Monto Reclamado': f'${r.montoReclamado:,.2f}',
-                            'Monto Indemnizado': f'${r.montoIndemnizado:,.2f}' if r.montoIndemnizado else '$0.00',
-                            'Estado': r.idEstadoReclamacion
-                        })
-                    st.dataframe(pd.DataFrame(filas_rec), hide_index=True, use_container_width=True)
-                else:
-                    st.info('El cliente no tiene reclamaciones registradas.')
+            if reclamaciones and st.button("Generar Reporte", key="btn_gen_rec_per", use_container_width=True):
+                datos = {
+                    "tipo_reporte": "Reporte de Estado de las Reclamaciones",
+                    "fecha_inicio": fecha_desde_sini.strftime('%d/%m/%Y'),
+                    "fecha_fin": fecha_hasta_sini.strftime('%d/%m/%Y'),
+                    "reclamaciones": reclamaciones_json
+                }
+                crud_reportes.crear(f"Estado Reclamaciones {fecha_desde_sini.strftime('%d%m%Y')} - {fecha_hasta_sini.strftime('%d%m%Y')}", datos)
+                st.success("Reporte temporal de reclamaciones guardado.")
+                st.rerun()
+
+        # 17. REPORTES DE INGRESOS MENSUALES POR CONCEPTOS DE PRIMAS
+        elif reporte_param == "Reporte de Ingresos Mensuales por Concepto de Primas":
+            st.caption("Detalle de ingresos mensuales filtrado por año fiscal y graficado para análisis de tendencia.")
+            años_disponibles = [date.today().year, date.today().year - 1, date.today().year - 2]
+            año_seleccionado = st.selectbox("Seleccione el año fiscal de interés:", options=años_disponibles, index=0, key="sb_año_primas_gen")
+            
+            with Database() as db:
+                ingresos = db.fetch_all(
+                    """
+                    SELECT EXTRACT(MONTH FROM fecha_pago) as mes,
+                           TO_CHAR(fecha_pago, 'Month') as nombre_mes,
+                           COALESCE(SUM(monto_pagado), 0) as ingreso
+                    FROM pago
+                    WHERE EXTRACT(YEAR FROM fecha_pago) = %s
+                    GROUP BY mes, nombre_mes
+                    ORDER BY mes;
+                    """,
+                    (año_seleccionado,)
+                )
+            
+            if ingresos:
+                meses = {
+                    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+                    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+                    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+                }
                 
-                if st.button('Generar Reporte', key='gen_cliente', use_container_width=True):
+                datos_completos = []
+                for mes_num, mes_nombre in meses.items():
+                    ingreso_val = next((float(i["ingreso"]) for i in ingresos if int(i["mes"]) == mes_num), 0.0)
+                    datos_completos.append({
+                        "mes": mes_nombre,
+                        "ingreso": ingreso_val
+                    })
+                
+                total_anual = sum(d["ingreso"] for d in datos_completos)
+                st.metric("Ingreso total anual por primas", f"${total_anual:,.2f}")
+                
+                filas = [{'Mes': d['mes'], 'Ingreso mensual ($)': f"${d['ingreso']:,.2f}"} for d in datos_completos]
+                st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
+                
+                # Gráfico
+                st.subheader("Gráfico de ingresos mensuales por primas")
+                df_chart = pd.DataFrame(datos_completos)
+                st.bar_chart(df_chart.set_index("mes")["ingreso"])
+                
+                if st.button("Generar Reporte", key="btn_gen_ing_primas", use_container_width=True):
                     datos = {
-                        'cliente': {
-                            'nombre': cliente.nombre,
-                            'apellidos': cliente.apellidos,
-                            'identificacion': cliente.noIdentificacion,
-                            'telefono': cliente.telefono,
-                            'correo': cliente.correo,
-                            'pais': pais.nombre if pais else 'N/A'
-                        },
-                        'polizas_activas': len(polizas_activas),
-                        'total_primas': float(total_primas),
-                        'reclamaciones': len(reclamaciones)
+                        "tipo_reporte": "Ingresos Mensuales",
+                        "año": año_seleccionado,
+                        "total_anual": float(total_anual),
+                        "ingresos": [{"mes": d["mes"], "ingreso": d["ingreso"]} for d in datos_completos]
                     }
-                    crud_reportes.crear(f'Ficha Cliente {cliente.nombre} {cliente.apellidos}', datos)
-                    st.success('Reporte guardado con la fecha de hoy.')
+                    crud_reportes.crear(f"Ingresos por Primas {año_seleccionado}", datos)
+                    st.success(f"Reporte de ingresos por primas {año_seleccionado} guardado con éxito.")
                     st.rerun()
-        _mostrar_reportes_guardados('Ficha Cliente')
-    
-    with tab4:
-        st.subheader('Ficha de una Reaseguradora Asociada')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        crud_reaseg = CrudReaseguradora()
-        reaseguradoras = crud_reaseg.obtener_todos()
-        
-        if not reaseguradoras:
-            st.warning('No hay reaseguradoras registradas.')
-        else:
-            reas_sel = st.selectbox('Seleccione una reaseguradora', options=reaseguradoras, format_func=lambda x: f'{x.nombre}')
-            if reas_sel:
-                reaseguradora = reas_sel
-                pais = CrudPais().obtener(reaseguradora.idPais)
-                tipo_reaseguro = CrudTipoReaseguro().obtener(reaseguradora.idTipoReaseguro)
-                
-                from db.queries_participacion_reaseguro import CrudParticipacionReaseguro
-                participaciones = [p for p in CrudParticipacionReaseguro().obtener_todos() if p.idReaseguradora == reaseguradora.id]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown('**Datos de la Reaseguradora**')
-                    st.text(f'Nombre: {reaseguradora.nombre}')
-                    st.text(f"País de Origen: {pais.nombre if pais else 'N/A'}")
-                    st.text(f"Tipo de Reaseguro: {tipo_reaseguro.nombre if tipo_reaseguro else 'N/A'}")
-                with col2:
-                    st.markdown('**Participación en Tipos de Seguro**')
-                    if participaciones:
-                        for part in participaciones:
-                            ts_obj = CrudTipoSeguro().obtener(part.idTipoSeguro)
-                            st.text(f'{ts_obj.nombre if ts_obj else "N/A"}: {part.porcentaje}%')
-                    else:
-                        st.info('No tiene participaciones registradas.')
-                
-                if st.button('Generar Reporte', key='gen_reaseg', use_container_width=True):
-                    datos = {
-                        'nombre': reaseguradora.nombre,
-                        'pais': pais.nombre if pais else 'N/A',
-                        'tipo_reaseguro': tipo_reaseguro.nombre if tipo_reaseguro else 'N/A',
-                        'participaciones': [{
-                            'tipo_seguro': CrudTipoSeguro().obtener(p.idTipoSeguro).nombre if CrudTipoSeguro().obtener(p.idTipoSeguro) else 'N/A',
-                            'porcentaje': float(p.porcentaje)
-                        } for p in participaciones]
-                    }
-                    crud_reportes.crear(f'Ficha Reaseguradora {reaseguradora.nombre}', datos)
-                    st.success('Reporte guardado con la fecha de hoy.')
-                    st.rerun()
-        _mostrar_reportes_guardados('Ficha Reaseguradora')
-    
+            else:
+                st.info(f"No hay pagos de primas registrados para el año {año_seleccionado}.")
+
+    # =========================================================================
+    # TAB 5: CENTRALIZED HISTORICAL REPORTS VIEW (CRITICAL GAP FILLED)
+    # =========================================================================
     with tab5:
-        st.subheader('Reporte de Pólizas Emitidas en un Período')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        col1, col2 = st.columns(2)
-        with col1:
-            fecha_inicio = st.date_input('Fecha de inicio', value=datetime.now().replace(day=1))
-        with col2:
-            fecha_fin = st.date_input('Fecha de fin', value=datetime.now())
-        
-        if st.button('Generar Reporte', key='gen_polizas', use_container_width=True):
-            crud_pol = CrudPoliza()
-            crud_cli = CrudCliente()
-            crud_ts = CrudTipoSeguro()
-            crud_ep = CrudEstadoPoliza()
-            
-            todas = crud_pol.obtener_todos()
-            filtradas = [p for p in todas if fecha_inicio <= p.fechaInicio <= fecha_fin]
-            
-            if filtradas:
-                filas = []
-                for pol in filtradas:
-                    cli = crud_cli.obtener(pol.idCliente)
-                    ts = crud_ts.obtener(pol.idTipoSeguro)
-                    ep = crud_ep.obtener(pol.idEstadoPoliza)
-                    filas.append({
-                        'No. Póliza': pol.id,
-                        'Cliente': f'{cli.nombre} {cli.apellidos}' if cli else 'N/A',
-                        'Tipo Seguro': ts.nombre if ts else 'N/A',
-                        'Fecha Inicio': pol.fechaInicio.strftime('%d/%m/%Y') if pol.fechaInicio else 'N/A',
-                        'Fecha Fin': pol.fechaFin.strftime('%d/%m/%Y') if pol.fechaFin else 'N/A',
-                        'Prima Mensual': f'${pol.primaMensual:,.2f}',
-                        'Estado': ep.nombre if ep else 'N/A'
-                    })
-                st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
-                st.caption(f'Total de pólizas encontradas: {len(filas)}')
-                
-                datos = {
-                    'fecha_inicio': fecha_inicio.strftime('%Y-%m-%d'),
-                    'fecha_fin': fecha_fin.strftime('%Y-%m-%d'),
-                    'polizas': [{
-                        'id': p.id,
-                        'cliente': f'{crud_cli.obtener(p.idCliente).nombre if crud_cli.obtener(p.idCliente) else "N/A"} {crud_cli.obtener(p.idCliente).apellidos if crud_cli.obtener(p.idCliente) else ""}',
-                        'tipo_seguro': crud_ts.obtener(p.idTipoSeguro).nombre if crud_ts.obtener(p.idTipoSeguro) else 'N/A',
-                        'fecha_inicio': p.fechaInicio.strftime('%Y-%m-%d') if p.fechaInicio else 'N/A',
-                        'fecha_fin': p.fechaFin.strftime('%Y-%m-%d') if p.fechaFin else 'N/A',
-                        'prima': float(p.primaMensual),
-                        'estado': crud_ep.obtener(p.idEstadoPoliza).nombre if crud_ep.obtener(p.idEstadoPoliza) else 'N/A'
-                    } for p in filtradas]
-                }
-                crud_reportes.crear(f'Pólizas por Período {fecha_inicio.strftime("%d/%m/%Y")} - {fecha_fin.strftime("%d/%m/%Y")}', datos)
-                st.success('Reporte guardado con la fecha de hoy.')
-                st.rerun()
-            else:
-                st.info('No se encontraron pólizas en el período seleccionado.')
-        _mostrar_reportes_guardados('Pólizas por Período')
-    
-    with tab6:
-        st.subheader('Reporte de Estado de las Reclamaciones')
-        st.caption(f"Fecha del reporte: {datetime.now().strftime('%d/%m/%Y')}")
-        col1, col2 = st.columns(2)
-        with col1:
-            fecha_inicio_rec = st.date_input('Fecha siniestro desde', value=datetime.now().replace(day=1), key='rec_inicio')
-        with col2:
-            fecha_fin_rec = st.date_input('Fecha siniestro hasta', value=datetime.now(), key='rec_fin')
-        
-        if st.button('Generar Reporte ', key='gen_reclam', use_container_width=True):
-            crud_rec = CrudReclamacion()
-            crud_pol = CrudPoliza()
-            crud_cli = CrudCliente()
-            crud_ts = CrudTipoSeguro()
-            crud_tsi = CrudTipoSiniestro()
-            crud_er = CrudEstadoReclamacion()
-            
-            todas = crud_rec.obtener_todos()
-            filtradas = [r for r in todas if r.fechaSiniestro and fecha_inicio_rec <= r.fechaSiniestro <= fecha_fin_rec]
-            
-            if filtradas:
-                filas = []
-                for rec in filtradas:
-                    pol = crud_pol.obtener(rec.idPoliza)
-                    cli = crud_cli.obtener(pol.idCliente) if pol else None
-                    ts = crud_ts.obtener(pol.idTipoSeguro) if pol else None
-                    tsi = crud_tsi.obtener(rec.idTipoSiniestro)
-                    er = crud_er.obtener(rec.idEstadoReclamacion)
-                    filas.append({
-                        'No. Reclamación': rec.id,
-                        'Cliente': f'{cli.nombre} {cli.apellidos}' if cli else 'N/A',
-                        'No. Póliza': rec.idPoliza,
-                        'Tipo Seguro': ts.nombre if ts else 'N/A',
-                        'Tipo Siniestro': tsi.nombre if tsi else 'N/A',
-                        'Fecha Siniestro': rec.fechaSiniestro.strftime('%d/%m/%Y') if rec.fechaSiniestro else 'N/A',
-                        'Estado': er.nombre if er else 'N/A',
-                        'Monto Reclamado': f'${rec.montoReclamado:,.2f}',
-                        'Monto Indemnizado': f'${rec.montoIndemnizado:,.2f}' if rec.montoIndemnizado else '$0.00'
-                    })
-                st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
-                st.caption(f'Total de reclamaciones encontradas: {len(filas)}')
-                
-                datos = {
-                    'fecha_inicio': fecha_inicio_rec.strftime('%Y-%m-%d'),
-                    'fecha_fin': fecha_fin_rec.strftime('%Y-%m-%d'),
-                    'reclamaciones': [{
-                        'id': r.id,
-                        'cliente': f'{crud_cli.obtener(crud_pol.obtener(r.idPoliza).idCliente).nombre if crud_pol.obtener(r.idPoliza) and crud_cli.obtener(crud_pol.obtener(r.idPoliza).idCliente) else "N/A"}',
-                        'monto_reclamado': float(r.montoReclamado),
-                        'monto_indemnizado': float(r.montoIndemnizado) if r.montoIndemnizado else 0,
-                        'estado': crud_er.obtener(r.idEstadoReclamacion).nombre if crud_er.obtener(r.idEstadoReclamacion) else 'N/A'
-                    } for r in filtradas]
-                }
-                crud_reportes.crear(f'Estado Reclamaciones {fecha_inicio_rec.strftime("%d/%m/%Y")} - {fecha_fin_rec.strftime("%d/%m/%Y")}', datos)
-                st.success('Reporte guardado con la fecha de hoy.')
-                st.rerun()
-            else:
-                st.info('No se encontraron reclamaciones en el período seleccionado.')
-        _mostrar_reportes_guardados('Estado Reclamaciones')
+        st.subheader("Historial de Reportes Guardados")
+        _mostrar_reportes_guardados_centralizado()

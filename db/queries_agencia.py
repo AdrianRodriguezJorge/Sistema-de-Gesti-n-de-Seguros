@@ -1,4 +1,4 @@
-from data.class_agencia import Agencia
+from models.agencia import Agencia
 from db.conexionDB import Database
 from db.queries_base import BaseCrud
 
@@ -65,3 +65,21 @@ class CrudAgencia(BaseCrud):
         params = (agencia.nombre, agencia.direccion, agencia.telefono, agencia.email, agencia.directorGeneral, agencia.jefeSeguros, agencia.jefeReclamaciones, agencia.id)
         with Database() as db:
             db.execute(sql, params)
+
+# Funciones de compatibilidad para la interfaz UI
+def obtener_agencia():
+    crud = CrudAgencia()
+    agencias = crud.obtener_todos()
+    r = agencias[0] if agencias else None
+    if r:
+        return {
+            "idagencia": r.id,
+            "nombre": r.nombre,
+            "direccion": r.direccion,
+            "telefono": r.telefono,
+            "email": r.email,
+            "directorgeneral": r.directorGeneral,
+            "jefeseguros": r.jefeSeguros,
+            "jefereclamaciones": r.jefeReclamaciones
+        }
+    return None

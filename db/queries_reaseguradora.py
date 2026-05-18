@@ -1,4 +1,4 @@
-from data.class_reaseguradora import Reaseguradora
+from models.reaseguradora import Reaseguradora
 from db.conexionDB import Database
 from db.queries_base import BaseCrud
   
@@ -54,3 +54,20 @@ class CrudReaseguradora(BaseCrud):
         params = (reaseguradora.nombre, reaseguradora.idPais, reaseguradora.idTipoReaseguro, reaseguradora.id)
         with Database() as db:
             db.execute(sql, params)
+
+
+# Funciones de compatibilidad para la interfaz UI
+def obtener_reaseguradora_por_id(id_reaseguradora):
+    # Debería retornar una estructura con pais_nombre y tipo_reaseguro_nombre
+    sql = """
+        SELECT r.idreaseguradora, r.nombre, r.idpais, r.idtiporeaseguro,
+               p.nombre as pais_nombre, tr.nombre as tipo_reaseguro_nombre,
+               r.email
+        FROM reaseguradora r
+        JOIN pais p ON r.idpais = p.idpais
+        JOIN tipo_reaseguro tr ON r.idtiporeaseguro = tr.idtiporeaseguro
+        WHERE r.idreaseguradora = %s
+    """
+    with Database() as db:
+        return db.fetch_one(sql, (id_reaseguradora,))
+

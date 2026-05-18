@@ -1,4 +1,4 @@
-from data.class_reclamacion_rechazada import ReclamacionRechazada
+from models.reclamacion_rechazada import ReclamacionRechazada
 from db.crud_generico import CrudGenerico
 
 def _mapear_reclamacion_rechazada(fila):

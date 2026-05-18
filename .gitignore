@@ -1,0 +1,80 @@
+# ==========================================
+# GITIGNORE - SISTEMA DE GESTIÓN DE SEGUROS
+# ==========================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Entornos Virtuales ---
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+bin/
+include/
+share/
+pip-selfcheck.json
+
+# --- Pruebas y Cobertura ---
+htmlcov/
+.tox/
+.nosetestsrc
+.pytest_cache/
+.cache/
+.coverage
+.coverage.*
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- Bases de datos y archivos grandes ---
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints
+
+# --- Editores e IDEs ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# --- Sistema Operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini
