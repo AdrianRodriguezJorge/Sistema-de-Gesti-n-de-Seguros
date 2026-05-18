@@ -20,22 +20,22 @@ class PDFReporte(FPDF):
         self.titulo_reporte = clean_txt(titulo_reporte)
         self.fecha_generacion = datetime.now().strftime("%d/%m/%Y %H:%M")
         
-        # Primary Colors (Navy Blue and Teal)
-        self.c_primary_r = 29
-        self.c_primary_g = 53
-        self.c_primary_b = 87
+        # Primary Colors (High-Contrast Earthy Green for PDF)
+        self.c_primary_r = 44
+        self.c_primary_g = 76
+        self.c_primary_b = 62
         
-        self.c_sec_r = 69
-        self.c_sec_g = 123
-        self.c_sec_b = 157
+        self.c_sec_r = 85
+        self.c_sec_g = 113
+        self.c_sec_b = 83
         
-        self.c_bg_r = 241
-        self.c_bg_g = 250
-        self.c_bg_b = 238
+        self.c_bg_r = 238
+        self.c_bg_g = 242
+        self.c_bg_b = 233
         
-        self.c_text_r = 50
-        self.c_text_g = 50
-        self.c_text_b = 50
+        self.c_text_r = 15
+        self.c_text_g = 20
+        self.c_text_b = 15
 
         self.set_margins(15, 15, 15)
         self.alias_nb_pages()
@@ -388,14 +388,58 @@ class GeneradorPDF:
         elif 'Estado Reclamaciones' in nombre_reporte:
             return GeneradorPDF.generar_pdf_estado_reclamaciones(datos)
         else:
-            # Generic fallback
+            # Smart Generic Fallback for dynamically printing any report list as a table
             pdf = PDFReporte(nombre_reporte)
             pdf.add_page()
             pdf.agregar_titulo_documento(nombre_reporte)
             pdf.ln(5)
-            pdf.agregar_subtitulo("Datos del Reporte")
+            
             for k, v in datos.items():
-                if isinstance(v, (dict, list)):
+                if k == 'tipo_reporte':
                     continue
-                pdf.agregar_campo_valor(k.capitalize(), str(v))
+                    
+                if isinstance(v, list):
+                    if not v:
+                        pdf.agregar_subtitulo(f"{str(k).replace('_', ' ').capitalize()}: Sin registros")
+                        continue
+                        
+                    # Check if it is a list of dictionaries
+                    if isinstance(v[0], dict):
+                        # Detect if it's a nested structure (e.g., grouped by country or type)
+                        has_nested_list = any(isinstance(val, list) for val in v[0].values())
+                        
+                        if has_nested_list:
+                            for item in v:
+                                text_parts = []
+                                nested_lists = []
+                                for sub_k, sub_v in item.items():
+                                    if isinstance(sub_v, list):
+                                        nested_lists.append((sub_k, sub_v))
+                                    else:
+                                        text_parts.append(f"{str(sub_v)}")
+                                
+                                pdf.agregar_seccion_divider()
+                                pdf.agregar_subtitulo(" - ".join(text_parts))
+                                
+                                for nl_k, nl_v in nested_lists:
+                                    if nl_v and isinstance(nl_v[0], dict):
+                                        headers = [str(hk).replace('_', ' ').capitalize() for hk in nl_v[0].keys()]
+                                        rows = [[str(hv) for hv in row.values()] for row in nl_v]
+                                        col_widths = [180/len(headers)] * len(headers)
+                                        pdf.agregar_tabla(headers, rows, col_widths)
+                                    else:
+                                        pdf.set_font('Helvetica', 'I', 9)
+                                        pdf.cell(0, 6, clean_txt("Sin registros"), ln=True)
+                        else:
+                            # Render a simple table for flat lists of dicts
+                            pdf.agregar_subtitulo(str(k).replace('_', ' ').title())
+                            headers = [str(hk).replace('_', ' ').capitalize() for hk in v[0].keys()]
+                            rows = [[str(hv) for hv in row.values()] for row in v]
+                            col_widths = [180/len(headers)] * len(headers)
+                            pdf.agregar_tabla(headers, rows, col_widths)
+                elif isinstance(v, dict):
+                    continue
+                else:
+                    pdf.agregar_campo_valor(str(k).replace('_', ' ').capitalize(), str(v))
+                    
             return bytes(pdf.output())

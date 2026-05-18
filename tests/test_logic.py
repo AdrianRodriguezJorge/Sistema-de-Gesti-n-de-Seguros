@@ -22,7 +22,7 @@ if sys.stdout.encoding != 'utf-8':
     except AttributeError:
         pass
 
-def run_tests():
+def test_logic():
     print("=" * 60)
     print("       🧪 EJECUTANDO PRUEBAS DE INTEGRIDAD Y LÓGICA DE NEGOCIO")
     print("=" * 60)
@@ -249,4 +249,4 @@ def run_tests():
     print("=" * 60)
 
 if __name__ == "__main__":
-    run_tests()
+    test_logic()

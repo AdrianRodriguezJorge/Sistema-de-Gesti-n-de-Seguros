@@ -11,11 +11,12 @@
 
 ## ✨ Características Principales (Features)
 
-- **Gestión Integral**: Administración completa del ciclo de vida de Clientes, Pólizas, Coberturas, Pagos y Reclamaciones.
+- **Gestión Integral y UI Moderna**: Interfaz premium unificada (single-table data grids) con filtros avanzados y paleta de colores armónica. Administración completa del ciclo de vida de Clientes, Pólizas, Coberturas, Pagos y Reclamaciones.
+- **Dashboard Analítico (KPIs)**: Panel de control interactivo con métricas en vivo (ingresos, siniestros pendientes, pólizas activas) y estados financieros en tiempo real.
 - **Motor de Reaseguro**: Asignación y control avanzado de la participación de reaseguradoras, categorizado por tipo de seguro.
-- **Alertas Dinámicas en Tiempo Real**: Notificaciones automáticas sobre pólizas próximas a vencer y reclamaciones en estado pendiente.
-- **Generación de Reportes**: Persistencia de datos históricos y analíticos en formato `JSONB`, con capacidad de exportación a PDF profesional.
-- **Seguridad e Integridad Transaccional**: Consistencia de datos estrictamente controlada mediante *Triggers*, funciones PL/pgSQL e índices optimizados en PostgreSQL.
+- **Alertas Dinámicas en Tiempo Real**: Notificaciones automáticas sobre pólizas próximas a vencer y reclamaciones en estado pendiente desde el Dashboard Principal.
+- **Generación de Reportes (PDF/JSON)**: Más de 17 reportes analíticos de la matriz de negocio con persistencia histórica en formato `JSONB`, y exportación profesional a PDF (vía ReportLab).
+- **Seguridad e Integridad Transaccional**: Consistencia estricta en PostgreSQL mediante *Triggers* (PL/pgSQL), prevención de eliminaciones huérfanas y reglas de validación en cascada.
 
 ---
 
@@ -125,18 +126,18 @@ El servidor local se iniciará y la aplicación web estará disponible por defec
 
 ---
 
-## 🧪 Pruebas Automatizadas
+## 🧪 Pruebas Automatizadas (QA)
 
-Para garantizar la estabilidad del sistema a medida que crece, se ha incluido una suite de pruebas en el directorio `tests/`.
+Para garantizar la estabilidad, la integridad relacional y la alta cobertura funcional del sistema, se ha implementado una robusta suite de pruebas en el directorio `tests/` (incluyendo validación estricta de *Triggers*, manejo en cascada y flujos de negocio clave).
 
 Puedes ejecutar todas las pruebas automatizadas (unitarias y de integración) utilizando `pytest` o el módulo nativo `unittest`:
 
 ```bash
 # Si usas pytest (recomendado):
-pytest tests/
+pytest tests/ -v
 
 # O usando el módulo nativo:
-python -m unittest discover -s tests
+python -m unittest discover -s tests -v
 ```
 
 ---

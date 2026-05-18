@@ -31,7 +31,7 @@ def pagina_principal():
                SELECT COUNT(*) as total
                FROM reclamacion r
                JOIN estado_reclamacion er ON r.idestadoreclamacion = er.idestadoreclamacion
-               WHERE er.nombre = 'En Proceso';
+               WHERE er.nombre ILIKE 'En proceso';
                """
           )
           reclamaciones_pendientes = reclamaciones_pendientes["total"] if reclamaciones_pendientes else 0
@@ -180,7 +180,7 @@ def pagina_principal():
                st.divider()
                if ultimas_reclamaciones:
                     for rec in ultimas_reclamaciones:
-                        color = "#FB8C00" if rec['estado'] == 'En Proceso' else "#43A047" if rec['estado'] == 'Pagada' else "#E53935"
+                        color = "#FB8C00" if rec['estado'].lower() == 'en proceso' else "#43A047" if rec['estado'].lower() == 'aprobada' else "#E53935"
                         fecha_str = rec['fechasiniestro'].strftime('%d/%m/%Y') if hasattr(rec['fechasiniestro'], 'strftime') else str(rec['fechasiniestro'])
                         st.markdown(f"🔸 **#{rec['idreclamacion']}** (Póliza #{rec['idpoliza']}) — {rec['cliente']}<br><small>Fecha: {fecha_str} | Estado: <span style='color:{color}; font-weight:bold;'>{rec['estado']}</span></small>", unsafe_allow_html=True)
                         st.divider()

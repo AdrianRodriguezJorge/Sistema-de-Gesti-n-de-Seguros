@@ -68,17 +68,24 @@ Se transformó la interfaz del sistema para dotarla de una estética premium y a
 *   **Modificación**: Se integró un motor generador de PDF que renderiza cada uno de los 17 reportes en un documento formal de descarga directa, incorporando cabeceras institucionales, tablas autoajustables y firmas de control.
 *   **Respaldo en la Orientación (Líneas 59-60 del TXT)**: *"Todos los listados e informes deben poder ser presentados en pantalla y exportados a formato PDF..."*
 
-### C. Sistema Visual de Cancelación de Pólizas y Rechazo de Reclamaciones
-*   **Modificación**:
-    *   En `ui_polizas.py`, al seleccionar "Cancelar Póliza", se despliega un subformulario visual interactivo para ingresar el motivo de cancelación, que se guarda en la tabla `poliza_cancelada` y actualiza la póliza a `'Cancelada'`.
-    *   En `ui_reclamaciones.py`, al marcar una reclamación como `'Rechazada'`, la interfaz solicita de manera obligatoria el motivo de rechazo y lo almacena en `reclamacion_rechazada`.
-*   **Respaldo en la Orientación (Líneas 24-26, 31-33 del TXT)**: Garantiza la trazabilidad de los estados especiales y las justificaciones del negocio.
+### C. Botones Inteligentes de Acción: Cancelación de Pólizas y Rechazo de Reclamaciones
+*   **Modificación del Flujo de Trabajo**: Se abandonó la edición simple convencional por un sistema de retención de histórico accionado por botones de estado en los CRUDs.
+    *   **Botón "Cancelar Póliza" (`ui_polizas.py`)**: Este botón despliega de forma reactiva un subformulario solicitando obligatoriamente el **motivo de cancelación**. Al confirmar, el sistema actualiza el estado de la póliza a `'Cancelada'` y escribe el histórico en `poliza_cancelada`.
+    *   **Botón "Rechazar Reclamación" (`ui_reclamaciones.py`)**: Al procesar un siniestro y cambiar su estado a `'Rechazada'`, la interfaz bloquea el guardado hasta que el operador redacte la **justificación del rechazo**, la cual se graba herméticamente en la tabla relacional `reclamacion_rechazada`.
+*   **Respaldo en la Orientación (Líneas 24-26, 31-33, 44 del TXT)**: Garantiza la trazabilidad legal e histórica de los estados excepcionales (Cancelación/Rechazo) exigidos por el negocio y listados en los reportes L6 y L11.
 
-### D. Indicadores de Alertas en Tiempo Real (Sidebar)
-*   **Modificación**: Se incluyó la función `mostrar_alertas()` en la barra lateral de `app.py`. Este componente ejecuta consultas al inicializarse y presenta alertas visuales (`st.warning` y `st.info`) para:
-    *   Pólizas que vencerán en los próximos 30 días.
-    *   Reclamaciones en estado `'En proceso'` que requieran atención inmediata.
-*   **Respaldo en la Orientación (Líneas 53-56 del TXT)**: *"El sistema debe emitir alertas automáticas en la pantalla principal para avisar sobre pólizas próximas a vencerse... y reclamaciones pendientes..."*
+### D. Dashboard Principal Analítico y Accesos Rápidos (`app.py` / `ui_principal.py`)
+*   **Modificación**: El módulo principal de la aplicación se transformó en un **Dashboard de Comando** de alto rendimiento.
+    *   **Métricas y KPIs en Vivo**: Utilizando componentes interactivos (`st.metric`), el Dashboard presenta indicadores financieros y estadísticos globales de la agencia en la página de inicio (ej. total de primas recaudadas, cantidad de clientes activos, recuento de siniestros).
+    *   **Sistema de Alertas Dinámicas**: Se integró un motor inteligente que analiza la base de datos al inicio de sesión y proyecta advertencias (`st.warning` / `st.info`) en la barra lateral para pólizas con expiración temprana (menos de 30 días) y reclamaciones atascadas `'En proceso'`.
+    *   **Flujo de Navegación Acelerada**: Inclusión de botones de acción rápida en la cuadrícula principal para acceder instantáneamente a los módulos de Clientes, Pólizas, Reclamaciones o Reportes.
+*   **Respaldo en la Orientación (Líneas 53-56 del TXT)**: *"El sistema debe emitir alertas automáticas en la pantalla principal para avisar sobre pólizas próximas a vencerse... y reclamaciones pendientes..."* proporcionando además visibilidad abierta de la información (RF1).
+
+### E. Control Estricto de Estado y Botones de "Cancelar Edición"
+*   **Modificación**: Se incorporó un mecanismo robusto de control de estado (`st.session_state`) en absolutamente todos los formularios CRUD de la aplicación.
+    *   Anteriormente, al entrar en modo de edición de un registro, el sistema retenía los estados en memoria. Esto permitía cambiar de página arrastrando variables de sesión huérfanas, lo que generaba inconsistencias visuales y colisiones al intentar guardar otros registros.
+    *   Se implementaron botones explícitos de **"Cancelar Edición"** en los formularios de cada módulo. Estos botones actúan como un interruptor de seguridad que limpia inmediatamente las variables `editando` y `id_editar`, devolviendo la interfaz a su estado original de lectura/creación y bloqueando fallos de navegación cruzada.
+*   **Respaldo en la Orientación (Líneas 47, 51 del TXT)**: Garantiza la "gestión limpia y robusta" de las interfaces, impidiendo colisiones de datos durante la manipulación concurrente de registros.
 
 ---
 
@@ -119,9 +126,3 @@ Para validar quirúrgicamente cada cambio, se diseñó e implementó la suite de
     *   Validación de que las alertas de vencimiento e historial en proceso son detectadas de forma exacta en la base de datos.
 4.  **Persistencia JSON de Reportes**: **`APROBADO`** 🟢
     *   Inserción y lectura del formato JSONB histórica completada exitosamente sin pérdida de precisión decimal ni sintáctica.
-
----
-
-## 6. Conclusión de la Auditoría
-
-El proyecto **"Seguros La Confianza"** ha sido exitosamente adaptado, corregido y potenciado. Cumple con **el 100% de las especificaciones de la base de datos, lógica de triggers, reglas de negocio visuales y las 17 salidas documentales PDF/JSON** estipuladas en la orientación académica. La arquitectura del software está lista para entornos de producción consistentes.

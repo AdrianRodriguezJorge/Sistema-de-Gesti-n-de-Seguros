@@ -88,37 +88,70 @@ def pagina_clientes():
                     st.rerun()
         return
 
-    active_tab = st.session_state.pop('active_tab_cliente', 'Listado')
-    if active_tab == 'Nuevo Cliente':
-        tab2, tab1, tab3 = st.tabs(['Nuevo Cliente', 'Listado', 'Editar / Eliminar'])
-    else:
-        tab1, tab2, tab3 = st.tabs(['Listado', 'Nuevo Cliente', 'Editar / Eliminar'])
+    # Ensure stable tab order unless explicitly requested to change
+    if 'current_tab_order_cliente' not in st.session_state:
+        st.session_state.current_tab_order_cliente = ['Listado', 'Nuevo Cliente', 'Editar Cliente']
+        
+    requested_tab = st.session_state.pop('active_tab_cliente', None)
+    if requested_tab and requested_tab in st.session_state.current_tab_order_cliente:
+        order = st.session_state.current_tab_order_cliente
+        order.remove(requested_tab)
+        order.insert(0, requested_tab)
+        st.session_state.current_tab_order_cliente = order
+
+    order = st.session_state.current_tab_order_cliente
+    created_tabs = st.tabs(order)
+    
+    tabs_dict = {name: tab for name, tab in zip(order, created_tabs)}
+    tab1 = tabs_dict['Listado']
+    tab2 = tabs_dict['Nuevo Cliente']
+    tab3 = tabs_dict['Editar Cliente']
     with tab1:
         st.subheader('Listado General de Clientes')
-        with st.spinner('Cargando clientes...'):
+        with st.spinner('Cargando clientes e información de pólizas...'):
             lista_clientes = crud_cliente.obtener_todos()
+            lista_polizas = CrudPoliza().obtener_todos()
+            estados_poliza = {e.id: e.nombre for e in CrudEstadoPoliza().obtener_todos()}
+            
         if lista_clientes:
             filas_todos = []
+            
             for c in lista_clientes:
-                filas_todos.append({'ID': c.id, 'Nombre Completo': f'{c.nombre} {c.apellidos}', 'Identificación': c.noIdentificacion, 'Edad': c.edad, 'Sexo': c.sexo, 'País': cat['pais_id_n'].get(c.idPais, 'N/A'), 'Teléfono': c.telefono, 'Correo': c.correo})
-            st.dataframe(pd.DataFrame(filas_todos), use_container_width=True, hide_index=True)
+                p_activas = [p for p in lista_polizas if p.idCliente == c.id and estados_poliza.get(p.idEstadoPoliza) == 'Activa']
+                total_primas = sum((p.primaMensual for p in p_activas))
+                
+                filas_todos.append({
+                    'ID': c.id, 
+                    'País': cat['pais_id_n'].get(c.idPais, 'N/A'),
+                    'Identificación': c.noIdentificacion,
+                    'Nombre Completo': f'{c.nombre} {c.apellidos}', 
+                    'Edad': c.edad, 
+                    'Sexo': c.sexo, 
+                    'Teléfono': c.telefono, 
+                    'Correo': c.correo,
+                    'Pólizas Activas': len(p_activas),
+                    'Total Primas ($)': float(total_primas)
+                })
+                
+            df_clientes = pd.DataFrame(filas_todos)
+            
+            # Filtro dinámico
+            paises_disponibles = ["Todos"] + sorted(list(df_clientes["País"].unique()))
+            pais_seleccionado = st.selectbox("🌍 Filtrar por País:", options=paises_disponibles, index=0)
+            
+            if pais_seleccionado != "Todos":
+                df_filtrado = df_clientes[df_clientes["País"] == pais_seleccionado]
+            else:
+                df_filtrado = df_clientes
+                
+            # Formatear la moneda visualmente antes de renderizar
+            df_display = df_filtrado.copy()
+            df_display['Total Primas ($)'] = df_display['Total Primas ($)'].map(lambda x: f"${x:,.2f}")
+            
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            st.caption(f'Total de clientes mostrados: {len(df_display)}')
         else:
             st.info('No hay clientes registrados.')
-        st.divider()
-        st.subheader('Listado de Clientes por País')
-        for id_p, nombre_p in cat['pais_id_n'].items():
-            clientes_pais = [c for c in lista_clientes if c.idPais == id_p]
-            if clientes_pais:
-                with st.expander(f'País: {nombre_p} ({len(clientes_pais)})', expanded=True):
-                    with st.spinner('Cargando pólizas...'):
-                        lista_polizas = CrudPoliza().obtener_todos()
-                        estados_poliza = {e.id: e.nombre for e in CrudEstadoPoliza().obtener_todos()}
-                    filas_p = []
-                    for c in clientes_pais:
-                        p_activas = [p for p in lista_polizas if p.idCliente == c.id and estados_poliza.get(p.idEstadoPoliza) == 'Activa']
-                        total_primas = sum((p.primaMensual for p in p_activas))
-                        filas_p.append({'Nombre del cliente': f'{c.nombre} {c.apellidos}', 'Número de identificación': c.noIdentificacion, 'Cantidad de pólizas activas': len(p_activas), 'Total primas activas': f'${total_primas:,.2f}'})
-                    st.dataframe(pd.DataFrame(filas_p), use_container_width=True, hide_index=True)
         st.divider()
         st.subheader('Clientes con Reclamaciones Rechazadas')
         with st.spinner('Cargando reclamaciones rechazadas...'):
@@ -183,7 +216,7 @@ def pagina_clientes():
             busqueda_dni = col_bus1.text_input('Por Número de Identificación')
             busqueda_nombre = col_bus2.text_input('Por Nombre o Apellido')
             busqueda_pais = col_bus3.selectbox('Por País', ['Todos'] + cat['nombres_paises'])
-            st.form_submit_button('Buscar', use_container_width=True)
+            st.form_submit_button('Buscar', use_container_width=True, on_click=lambda: st.session_state.update(active_tab_cliente='Editar Cliente'))
            
         filtros = {}
         if busqueda_dni:
@@ -202,13 +235,13 @@ def pagina_clientes():
                 st.session_state.edit_cliente_page = max(0, total_pages - 1)
             col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
             with col_pag1:
-                if st.button('← Anterior', key='edit_cli_ant', disabled=st.session_state.edit_cliente_page <= 0):
+                if st.button('← Anterior', key='edit_cli_ant', disabled=st.session_state.edit_cliente_page <= 0, on_click=lambda: st.session_state.update(active_tab_cliente='Editar Cliente')):
                     st.session_state.edit_cliente_page -= 1
                     st.rerun()
             with col_pag2:
                 st.markdown(f'<center>Página {st.session_state.edit_cliente_page + 1} de {total_pages} ({total_clientes} clientes)</center>', unsafe_allow_html=True)
             with col_pag3:
-                if st.button('Siguiente →', key='edit_cli_sig', disabled=st.session_state.edit_cliente_page >= total_pages - 1):
+                if st.button('Siguiente →', key='edit_cli_sig', disabled=st.session_state.edit_cliente_page >= total_pages - 1, on_click=lambda: st.session_state.update(active_tab_cliente='Editar Cliente')):
                     st.session_state.edit_cliente_page += 1
                     st.rerun()
             with st.spinner(f'Cargando clientes (página {st.session_state.edit_cliente_page + 1})...'):

@@ -22,43 +22,63 @@ def _renderizar_reporte_detalle(nombre_reporte, datos):
     
     # 1. LISTADO DE CLIENTES
     if tipo == 'Listado de Clientes':
-        st.info("Visualizando Listado de Clientes agrupado por país de origen.")
+        st.info("Visualizando Listado de Clientes guardado en el historial.")
         paises_datos = datos.get('paises_datos', [])
+        todas_filas = []
         for p in paises_datos:
-            st.markdown(f"### {p['pais']}")
             if p['clientes']:
-                df = pd.DataFrame(p['clientes'])
-                df_display = df.rename(columns={
-                    "idcliente": "ID",
-                    "nombre": "Nombre",
-                    "apellidos": "Apellidos",
-                    "polizas_activas": "Pólizas activas",
-                    "total_pagado": "Total pagado ($)"
-                })
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                for c in p['clientes']:
+                    todas_filas.append({
+                        "ID": c["idcliente"],
+                        "País": p["pais"],
+                        "Nombre": c["nombre"],
+                        "Apellidos": c["apellidos"],
+                        "Pólizas activas": c.get("polizas_activas", 0),
+                        "Total pagado ($)": c.get("total_pagado", 0.0)
+                    })
+                    
+        if todas_filas:
+            df = pd.DataFrame(todas_filas)
+            paises_disponibles = ["Todos"] + sorted(list(df["País"].unique()))
+            pais_sel = st.selectbox("🌍 Filtrar por País (Histórico):", options=paises_disponibles, index=0, key="hist_cli_pais")
+            
+            if pais_sel != "Todos":
+                st.dataframe(df[df["País"] == pais_sel], use_container_width=True, hide_index=True)
             else:
-                st.caption("No hay clientes registrados en este país.")
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No hay clientes registrados en este reporte.")
 
     # 2. LISTADO DE PÓLIZAS
     elif tipo == 'Listado de Pólizas':
-        st.info("Visualizando Listado de Pólizas agrupado por tipo de seguro.")
+        st.info("Visualizando Listado de Pólizas guardado en el historial.")
         tipos_datos = datos.get('tipos_datos', [])
+        todas_filas = []
         for t in tipos_datos:
-            st.markdown(f"###  {t['tipo']}")
             if t['polizas']:
-                df = pd.DataFrame(t['polizas'])
-                df_display = df.rename(columns={
-                    "idpoliza": "Número",
-                    "cliente": "Cliente",
-                    "fechainicio": "Fecha inicio",
-                    "fechafin": "Fecha fin",
-                    "primamensual": "Prima mensual",
-                    "montoasegurado": "Monto asegurado",
-                    "estado": "Estado"
-                })
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
+                for p in t['polizas']:
+                    todas_filas.append({
+                        "Número": p["idpoliza"],
+                        "Tipo de Seguro": t["tipo"],
+                        "Cliente": p["cliente"],
+                        "Fecha inicio": p["fechainicio"],
+                        "Fecha fin": p["fechafin"],
+                        "Prima mensual": p["primamensual"],
+                        "Monto asegurado": p["montoasegurado"],
+                        "Estado": p["estado"]
+                    })
+                    
+        if todas_filas:
+            df = pd.DataFrame(todas_filas)
+            tipos_disponibles = ["Todos"] + sorted(list(df["Tipo de Seguro"].unique()))
+            tipo_sel = st.selectbox("🛡️ Filtrar por Tipo de Seguro (Histórico):", options=tipos_disponibles, index=0, key="hist_pol_tipo")
+            
+            if tipo_sel != "Todos":
+                st.dataframe(df[df["Tipo de Seguro"] == tipo_sel], use_container_width=True, hide_index=True)
             else:
-                st.caption("No hay pólizas registradas para este tipo.")
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No hay pólizas registradas en este reporte.")
 
     # 3. LISTADO DE RECLAMACIONES
     elif tipo == 'Listado de Reclamaciones':
@@ -400,8 +420,9 @@ def pagina_reportes():
             paises = listar_paises()
             
             paises_datos_json = []
+            todas_filas_ui = [] # Para la tabla única
+            
             for pais in paises:
-                st.markdown(f"### {pais['nombre']}")
                 with Database() as db:
                     clientes = db.fetch_all(
                         """
@@ -421,18 +442,8 @@ def pagina_reportes():
                 
                 clientes_list = []
                 if clientes:
-                    df = pd.DataFrame(clientes)
-                    df_display = df.rename(columns={
-                        "idcliente": "ID",
-                        "nombre": "Nombre",
-                        "apellidos": "Apellidos",
-                        "polizas_activas": "Pólizas activas",
-                        "total_pagado": "Total pagado ($)"
-                    })
-                    st.dataframe(df_display, use_container_width=True, hide_index=True)
-                    
-                    # Convertir para JSON de persistencia
                     for cli in clientes:
+                        # Para el JSON jerárquico (preservar estructura del PDF)
                         clientes_list.append({
                             "idcliente": cli["idcliente"],
                             "nombre": cli["nombre"],
@@ -440,13 +451,38 @@ def pagina_reportes():
                             "polizas_activas": int(cli["polizas_activas"]),
                             "total_pagado": float(cli["total_pagado"])
                         })
-                else:
-                    st.info(f"No hay clientes registrados en {pais['nombre']}.")
+                        
+                        # Para la UI unificada
+                        todas_filas_ui.append({
+                            "ID": cli["idcliente"],
+                            "País": pais["nombre"],
+                            "Nombre": cli["nombre"],
+                            "Apellidos": cli["apellidos"],
+                            "Pólizas activas": int(cli["polizas_activas"]),
+                            "Total pagado ($)": float(cli["total_pagado"])
+                        })
                 
                 paises_datos_json.append({
                     "pais": pais["nombre"],
                     "clientes": clientes_list
                 })
+                
+            # Interfaz de Usuario Moderna: Una sola tabla con filtros
+            if todas_filas_ui:
+                df_clientes = pd.DataFrame(todas_filas_ui)
+                
+                # Filtro dinámico
+                paises_disponibles = ["Todos"] + sorted(list(df_clientes["País"].unique()))
+                pais_seleccionado = st.selectbox("🌍 Filtrar por País:", options=paises_disponibles, index=0)
+                
+                if pais_seleccionado != "Todos":
+                    df_filtrado = df_clientes[df_clientes["País"] == pais_seleccionado]
+                else:
+                    df_filtrado = df_clientes
+                    
+                st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay clientes registrados en el sistema.")
                 
             if st.button("Generar Reporte", key="btn_gen_lis_cli", use_container_width=True):
                 datos = {
@@ -463,8 +499,9 @@ def pagina_reportes():
             tipos_seguro = listar_tipos_seguro()
             
             tipos_datos_json = []
+            todas_polizas_ui = []
+            
             for tipo in tipos_seguro:
-                st.markdown(f"###  {tipo['nombre']}")
                 with Database() as db:
                     polizas = db.fetch_all(
                         """
@@ -482,19 +519,8 @@ def pagina_reportes():
                 
                 polizas_list = []
                 if polizas:
-                    df = pd.DataFrame(polizas)
-                    df_display = df.rename(columns={
-                        "idpoliza": "Número",
-                        "cliente": "Cliente",
-                        "fechainicio": "Fecha inicio",
-                        "fechafin": "Fecha fin",
-                        "primamensual": "Prima mensual",
-                        "montoasegurado": "Monto asegurado",
-                        "estado": "Estado"
-                    })
-                    st.dataframe(df_display, use_container_width=True, hide_index=True)
-                    
                     for p in polizas:
+                        # Para JSON jerárquico
                         polizas_list.append({
                             "idpoliza": p["idpoliza"],
                             "cliente": p["cliente"],
@@ -504,13 +530,40 @@ def pagina_reportes():
                             "montoasegurado": float(p["montoasegurado"]),
                             "estado": p["estado"]
                         })
-                else:
-                    st.info(f"No hay pólizas registradas para {tipo['nombre']}.")
+                        
+                        # Para UI unificada
+                        todas_polizas_ui.append({
+                            "Número": p["idpoliza"],
+                            "Tipo de Seguro": tipo["nombre"],
+                            "Cliente": p["cliente"],
+                            "Fecha inicio": p["fechainicio"].strftime('%Y-%m-%d'),
+                            "Fecha fin": p["fechafin"].strftime('%Y-%m-%d'),
+                            "Prima mensual": float(p["primamensual"]),
+                            "Monto asegurado": float(p["montoasegurado"]),
+                            "Estado": p["estado"]
+                        })
                     
                 tipos_datos_json.append({
                     "tipo": tipo["nombre"],
                     "polizas": polizas_list
                 })
+                
+            # Interfaz de Usuario Moderna: Una sola tabla con filtros
+            if todas_polizas_ui:
+                df_polizas = pd.DataFrame(todas_polizas_ui)
+                
+                # Filtro dinámico
+                tipos_disponibles = ["Todos"] + sorted(list(df_polizas["Tipo de Seguro"].unique()))
+                tipo_seleccionado = st.selectbox("🛡️ Filtrar por Tipo de Seguro:", options=tipos_disponibles, index=0)
+                
+                if tipo_seleccionado != "Todos":
+                    df_filtrado = df_polizas[df_polizas["Tipo de Seguro"] == tipo_seleccionado]
+                else:
+                    df_filtrado = df_polizas
+                    
+                st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay pólizas registradas en el sistema.")
                 
             if st.button("Generar Reporte", key="btn_gen_lis_pol", use_container_width=True):
                 datos = {

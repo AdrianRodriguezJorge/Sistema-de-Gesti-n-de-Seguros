@@ -123,10 +123,9 @@ def test_ui_queries():
     
     if failures > 0:
         print("❌ ¡ALERTA! Se encontraron consultas SQL rotas o desalineadas en la capa UI.")
-        sys.exit(1)
+        assert failures == 0, "Se encontraron consultas SQL rotas en la UI."
     else:
         print("🎉 ¡TODO PERFECTO! Todas las consultas SQL en los archivos de la interfaz son 100% correctas.")
-        sys.exit(0)
 
 if __name__ == "__main__":
     test_ui_queries()

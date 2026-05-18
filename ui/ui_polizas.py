@@ -117,15 +117,26 @@ def pagina_polizas():
                     st.rerun()
         return
 
-    active_tab = st.session_state.pop('active_tab_poliza', 'Listado')
-    if active_tab == 'Nueva Poliza':
-        tab2, tab1, tab3, tab4, tab5 = st.tabs([
-            'Nueva Poliza', 'Listado', 'Editar Poliza', 'Coberturas', 'Pagos'
-        ])
-    else:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            'Listado', 'Nueva Poliza', 'Editar Poliza', 'Coberturas', 'Pagos'
-        ])
+    # Ensure stable tab order unless explicitly requested to change
+    if 'current_tab_order_poliza' not in st.session_state:
+        st.session_state.current_tab_order_poliza = ['Listado', 'Nueva Poliza', 'Editar Poliza', 'Coberturas', 'Pagos']
+        
+    requested_tab = st.session_state.pop('active_tab_poliza', None)
+    if requested_tab and requested_tab in st.session_state.current_tab_order_poliza:
+        order = st.session_state.current_tab_order_poliza
+        order.remove(requested_tab)
+        order.insert(0, requested_tab)
+        st.session_state.current_tab_order_poliza = order
+
+    order = st.session_state.current_tab_order_poliza
+    created_tabs = st.tabs(order)
+    
+    tabs_dict = {name: tab for name, tab in zip(order, created_tabs)}
+    tab1 = tabs_dict['Listado']
+    tab2 = tabs_dict['Nueva Poliza']
+    tab3 = tabs_dict['Editar Poliza']
+    tab4 = tabs_dict['Coberturas']
+    tab5 = tabs_dict['Pagos']
     
     # Tab 1: Listado General
     with tab1:
@@ -136,42 +147,36 @@ def pagina_polizas():
         if not lista_polizas:
             st.info('No hay polizas registradas.')
         else:
-            # Agrupar pólizas por tipo de seguro
-            policies_by_tipo = {}
+            todas_filas = []
             for p in lista_polizas:
-                tipo_id = p.idTipoSeguro
-                if tipo_id not in policies_by_tipo:
-                    policies_by_tipo[tipo_id] = []
-                policies_by_tipo[tipo_id].append(p)
-            
-            # Ordenar tipos por nombre
-            sorted_tipo_ids = sorted(
-                policies_by_tipo.keys(),
-                key=lambda tid: catalogos['ts_id_n'].get(tid, '').lower()
-            )
-            
-            for tipo_id in sorted_tipo_ids:
-                tipo_name = catalogos['ts_id_n'].get(tipo_id, f'Tipo desconocido (ID: {tipo_id})')
-                st.markdown(f'#### Tipo de seguro: {tipo_name}')
+                cliente = catalogos['cli_id_obj'].get(p.idCliente)
+                nombre_cli = f'{cliente.nombre} {cliente.apellidos}' if cliente else 'Desconocido'
+                tipo_name = catalogos['ts_id_n'].get(p.idTipoSeguro, f'Tipo desconocido (ID: {p.idTipoSeguro})')
                 
-                polizas_tipo = policies_by_tipo[tipo_id]
-                filas_tipo = []
-                for p in polizas_tipo:
-                    cliente = catalogos['cli_id_obj'].get(p.idCliente)
-                    nombre_cli = f'{cliente.nombre} {cliente.apellidos}' if cliente else 'Desconocido'
-                    filas_tipo.append({
-                        'Número de póliza': p.id,
-                        'Nombre del cliente': nombre_cli,
-                        'Fecha de inicio': p.fechaInicio,
-                        'Fecha de fin': p.fechaFin,
-                        'Prima mensual': f'${p.primaMensual:,.2f}',
-                        'Monto total asegurado': f'${p.montoAsegurado:,.2f}',
-                        'Estado': catalogos['ep_id_n'].get(p.idEstadoPoliza, '-')
-                    })
+                todas_filas.append({
+                    'Número de póliza': p.id,
+                    'Tipo de Seguro': tipo_name,
+                    'Nombre del cliente': nombre_cli,
+                    'Fecha de inicio': p.fechaInicio,
+                    'Fecha de fin': p.fechaFin,
+                    'Prima mensual': f'${p.primaMensual:,.2f}',
+                    'Monto total asegurado': f'${p.montoAsegurado:,.2f}',
+                    'Estado': catalogos['ep_id_n'].get(p.idEstadoPoliza, '-')
+                })
                 
-                st.dataframe(pd.DataFrame(filas_tipo), hide_index=True, use_container_width=True)
-                st.caption(f'Total de pólizas para {tipo_name}: {len(polizas_tipo)}')
-                st.divider()
+            df_polizas = pd.DataFrame(todas_filas)
+            
+            # Filtro dinámico
+            tipos_disponibles = ["Todos"] + sorted(list(df_polizas["Tipo de Seguro"].unique()))
+            tipo_seleccionado = st.selectbox("🛡️ Filtrar por Tipo de Seguro:", options=tipos_disponibles, index=0)
+            
+            if tipo_seleccionado != "Todos":
+                df_filtrado = df_polizas[df_polizas["Tipo de Seguro"] == tipo_seleccionado]
+            else:
+                df_filtrado = df_polizas
+                
+            st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+            st.caption(f'Total de pólizas mostradas: {len(df_filtrado)}')
 
         st.divider()
 
@@ -282,7 +287,7 @@ def pagina_polizas():
             busqueda_id = col_bus1.text_input('Por Nde Poliza')
             busqueda_cliente = col_bus2.text_input('Por Nombre de Cliente')
             busqueda_estado = col_bus3.selectbox('Por Estado', ['Todos'] + list(catalogos['ep_id_n'].values()))
-            st.form_submit_button('Buscar', use_container_width=True)
+            st.form_submit_button('Buscar', use_container_width=True, on_click=lambda: st.session_state.update(active_tab_poliza='Editar Poliza'))
         
         filtros = {}
         if busqueda_id:
@@ -308,13 +313,13 @@ def pagina_polizas():
                     st.session_state.edit_poliza_page = max(0, total_pages - 1)
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
                 with col_pag1:
-                    if st.button('← Anterior', key='edit_pol_ant', disabled=st.session_state.edit_poliza_page <= 0):
+                    if st.button('← Anterior', key='edit_pol_ant', disabled=st.session_state.edit_poliza_page <= 0, on_click=lambda: st.session_state.update(active_tab_poliza='Editar Poliza')):
                         st.session_state.edit_poliza_page -= 1
                         st.rerun()
                 with col_pag2:
                     st.markdown(f'<center>Pagina {st.session_state.edit_poliza_page + 1} de {total_pages} ({total_polizas} polizas)</center>', unsafe_allow_html=True)
                 with col_pag3:
-                    if st.button('Siguiente →', key='edit_pol_sig', disabled=st.session_state.edit_poliza_page >= total_pages - 1):
+                    if st.button('Siguiente →', key='edit_pol_sig', disabled=st.session_state.edit_poliza_page >= total_pages - 1, on_click=lambda: st.session_state.update(active_tab_poliza='Editar Poliza')):
                         st.session_state.edit_poliza_page += 1
                         st.rerun()
                 lista_filtrada = CrudPoliza().filtrar(limit=PAGE_SIZE, offset=st.session_state.edit_poliza_page * PAGE_SIZE, **filtros)

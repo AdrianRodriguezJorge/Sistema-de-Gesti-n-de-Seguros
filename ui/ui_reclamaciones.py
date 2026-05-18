@@ -79,11 +79,8 @@ def pagina_reclamaciones():
                 nombres_estados = list(catalogos['er_n_id'].keys())
                 idx_estado = list(catalogos['er_id_n'].keys()).index(reclamacion_sel.idEstadoReclamacion) if reclamacion_sel.idEstadoReclamacion in catalogos['er_id_n'] else 0
                 nuevo_estado = st.selectbox('Estado', nombres_estados, index=idx_estado)
-                desc = st.text_area('Descripción del siniestro/motivo', value=reclamacion_sel.descripcion if reclamacion_sel.descripcion else '')
                 
-                motivo_rechazo = ''
-                if nuevo_estado == 'Rechazada':
-                    motivo_rechazo = st.text_area('Motivo del rechazo', placeholder='Ingrese el motivo de rechazo...')
+                motivo_rechazo = st.text_area('Motivo de rechazo (requerido si el estado es Rechazada)', placeholder='Ingrese el motivo de rechazo...')
                 
                 col_b1, col_b2, col_b3 = st.columns(3)
                 btn_upd = col_b1.form_submit_button('Actualizar Datos', use_container_width=True)
@@ -99,11 +96,12 @@ def pagina_reclamaciones():
                             valida, msg = validar_poliza_activa(pol, st.session_state.get('rol'))
                             if not valida:
                                 st.error(f'La póliza no está activa. {msg}')
+                            elif nuevo_estado == 'Rechazada' and not motivo_rechazo.strip():
+                                st.error('Debe ingresar un motivo de rechazo.')
                             else:
                                 estado_rechazo_previo = catalogos['er_id_n'].get(reclamacion_sel.idEstadoReclamacion) == 'Rechazada'
                                 reclamacion_sel.montoReclamado = monto_recl
                                 reclamacion_sel.idEstadoReclamacion = catalogos['er_n_id'][nuevo_estado]
-                                reclamacion_sel.descripcion = desc
                                 crud_reclamacion.actualizar(reclamacion_sel)
                                 if nuevo_estado == 'Rechazada' and not estado_rechazo_previo:
                                     rech = ReclamacionRechazada(motivo=motivo_rechazo.strip() if motivo_rechazo.strip() else None, idReclamacion=reclamacion_sel.id)
@@ -123,11 +121,24 @@ def pagina_reclamaciones():
                     st.rerun()
         return
 
-    active_tab = st.session_state.pop('active_tab_reclamacion', 'Listado')
-    if active_tab == 'Nueva Reclamación':
-        tab2, tab1, tab3 = st.tabs(['Nueva Reclamación', 'Listado', 'Editar Reclamación'])
-    else:
-        tab1, tab2, tab3 = st.tabs(['Listado', 'Nueva Reclamación', 'Editar Reclamación'])
+    # Ensure stable tab order unless explicitly requested to change
+    if 'current_tab_order_reclamacion' not in st.session_state:
+        st.session_state.current_tab_order_reclamacion = ['Listado', 'Nueva Reclamación', 'Editar Reclamación']
+        
+    requested_tab = st.session_state.pop('active_tab_reclamacion', None)
+    if requested_tab and requested_tab in st.session_state.current_tab_order_reclamacion:
+        order = st.session_state.current_tab_order_reclamacion
+        order.remove(requested_tab)
+        order.insert(0, requested_tab)
+        st.session_state.current_tab_order_reclamacion = order
+
+    order = st.session_state.current_tab_order_reclamacion
+    created_tabs = st.tabs(order)
+    
+    tabs_dict = {name: tab for name, tab in zip(order, created_tabs)}
+    tab1 = tabs_dict['Listado']
+    tab2 = tabs_dict['Nueva Reclamación']
+    tab3 = tabs_dict['Editar Reclamación']
     with tab1:
         with st.spinner('Cargando reclamaciones...'):
             lista_reclamaciones = CrudReclamacion().obtener_todos()
@@ -240,9 +251,9 @@ def pagina_reclamaciones():
             busqueda_estado = col_bus3.selectbox('Por Estado', ['Todos'] + list(catalogos['er_id_n'].values()))
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                btn_buscar = st.form_submit_button(' Buscar', use_container_width=True)
+                btn_buscar = st.form_submit_button(' Buscar', use_container_width=True, on_click=lambda: st.session_state.update(active_tab_reclamacion='Editar Reclamación'))
             with col_btn2:
-                btn_limpiar = st.form_submit_button(' Limpiar', use_container_width=True)
+                btn_limpiar = st.form_submit_button(' Limpiar', use_container_width=True, on_click=lambda: st.session_state.update(active_tab_reclamacion='Editar Reclamación'))
         if 'buscar_reclamacion' not in st.session_state:
             st.session_state.buscar_reclamacion = False
         if btn_limpiar:
@@ -287,13 +298,13 @@ def pagina_reclamaciones():
                         st.session_state.edit_reclamacion_page = max(0, total_pages - 1)
                     col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
                     with col_pag1:
-                        if st.button('← Anterior', key='edit_rec_ant', disabled=st.session_state.edit_reclamacion_page <= 0):
+                        if st.button('← Anterior', key='edit_rec_ant', disabled=st.session_state.edit_reclamacion_page <= 0, on_click=lambda: st.session_state.update(active_tab_reclamacion='Editar Reclamación')):
                             st.session_state.edit_reclamacion_page -= 1
                             st.rerun()
                     with col_pag2:
                         st.markdown(f'<center>Página {st.session_state.edit_reclamacion_page + 1} de {total_pages} ({total_reclamaciones} reclamaciones)</center>', unsafe_allow_html=True)
                     with col_pag3:
-                        if st.button('Siguiente →', key='edit_rec_sig', disabled=st.session_state.edit_reclamacion_page >= total_pages - 1):
+                        if st.button('Siguiente →', key='edit_rec_sig', disabled=st.session_state.edit_reclamacion_page >= total_pages - 1, on_click=lambda: st.session_state.update(active_tab_reclamacion='Editar Reclamación')):
                             st.session_state.edit_reclamacion_page += 1
                             st.rerun()
                     with st.spinner(f'Cargando reclamaciones (página {st.session_state.edit_reclamacion_page + 1})...'):
