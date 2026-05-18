@@ -1,7 +1,7 @@
 # INFORME HISTÓRICO DE CAMBIOS Y CUMPLIMIENTO TÉCNICO
 ## Sistema de Gestión de Seguros — "La Confianza"
 
-Este informe detalla minuciosamente todas las modificaciones, correcciones, optimizaciones e incorporaciones funcionales que se han realizado en el proyecto desde el fork inicial. Cada sección se presenta respaldada técnica y funcionalmente contra las orientaciones académicas del archivo de especificación **`pdf_text.txt`**.
+Este informe detalla minuciosamente todas las modificaciones, correcciones, optimizaciones e incorporaciones funcionales que se han realizado en el proyecto desde el fork inicial. 
 
 ---
 
@@ -86,6 +86,13 @@ Se transformó la interfaz del sistema para dotarla de una estética premium y a
     *   Anteriormente, al entrar en modo de edición de un registro, el sistema retenía los estados en memoria. Esto permitía cambiar de página arrastrando variables de sesión huérfanas, lo que generaba inconsistencias visuales y colisiones al intentar guardar otros registros.
     *   Se implementaron botones explícitos de **"Cancelar Edición"** en los formularios de cada módulo. Estos botones actúan como un interruptor de seguridad que limpia inmediatamente las variables `editando` y `id_editar`, devolviendo la interfaz a su estado original de lectura/creación y bloqueando fallos de navegación cruzada.
 *   **Respaldo en la Orientación (Líneas 47, 51 del TXT)**: Garantiza la "gestión limpia y robusta" de las interfaces, impidiendo colisiones de datos durante la manipulación concurrente de registros.
+
+### F. Estilizado Global de Componentes y Alertas Nativas (Monkey-Patching)
+*   **Modificación**: En lugar de depender del aspecto plano de los componentes predeterminados de Streamlit, el archivo raíz `app.py` fue modificado para sobrescribir (monkey-patch) el renderizado core:
+    *   **DataFrames Dinámicos HTML**: Todas las llamadas a `st.dataframe` se interceptan y redirigen para renderizar tablas HTML estáticas (`pd.DataFrame.to_html`) enriquecidas con la paleta de colores corporativa (bordes `#D2DCB6`, hover effects `#E6EAD0`).
+    *   **Alertas Estilizadas Globales**: Las notificaciones (`st.info`, `st.warning`, `st.error`, `st.success`) han sido redefinidas a nivel core para pintar contenedores HTML customizados, mejorando drásticamente el impacto visual y la armonía estética de toda la plataforma.
+    *   **Scroll-to-Top Inteligente**: Se añadió un trigger oculto en JavaScript que fuerza a la interfaz a auto-desplazarse hacia arriba (Top) de manera limpia y automática cada vez que se detecta un cambio en las opciones del menú lateral.
+*   **Respaldo en la Orientación (Requerimiento Transversal)**: Satisface la directriz integral de entregar una aplicación estética, moderna y con un flujo de interacción sin fricciones.
 
 ---
 
