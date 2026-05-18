@@ -10,6 +10,7 @@ from db.queries_reaseguradora import CrudReaseguradora
 from db.queries_catalogos import CrudPais, CrudTipoSeguro, CrudTipoSiniestro, CrudTipoReaseguro, CrudEstadoPoliza, CrudEstadoReclamacion
 from db.queries_reporte_generado import CrudReporteGenerado
 import json
+from utils.generador_pdf import GeneradorPDF
 
 def _mostrar_reportes_guardados(nombre_prefix):
     crud = CrudReporteGenerado()
@@ -40,6 +41,21 @@ def _mostrar_reportes_guardados(nombre_prefix):
                 st.divider()
                 st.subheader(f"Visualizando: {rep['nombre_reporte']}")
                 datos = rep['datos_reporte'] if isinstance(rep['datos_reporte'], dict) else json.loads(rep['datos_reporte'])
+                
+                # Botón de Descarga PDF
+                try:
+                    pdf_bytes = GeneradorPDF.generar(rep['nombre_reporte'], datos)
+                    st.download_button(
+                        label="📥 Descargar Reporte en PDF",
+                        data=pdf_bytes,
+                        file_name=f"{rep['nombre_reporte'].replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        key=f"download_pdf_{rep['id_reporte']}",
+                        use_container_width=True
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar el PDF: {e}")
+                st.divider()
                 
                 if 'Ingresos Mensuales' in rep['nombre_reporte']:
                     st.metric('Ingreso Total Anual', f"${datos.get('total_anual', 0):,.2f}")

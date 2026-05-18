@@ -6,7 +6,7 @@ class Database:
         self.conn = psycopg2.connect(
             dbname="seguros_db",
             user="postgres",
-            password="vrdThqZH",
+            password="admin",
             host="localhost",
             port="5432",
             client_encoding='UTF8'
@@ -21,10 +21,6 @@ class Database:
     def fetch_one(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
-<<<<<<< HEAD
-        self.conn.commit()
-=======
->>>>>>> 73161b5 (mis cambios)
         row = cur.fetchone()
         self.conn.commit()
         cur.close()
@@ -33,10 +29,6 @@ class Database:
     def fetch_all(self, sql, params=None):
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(sql, params)
-<<<<<<< HEAD
-        self.conn.commit()
-=======
->>>>>>> 73161b5 (mis cambios)
         rows = cur.fetchall()
         cur.close()
         return rows
